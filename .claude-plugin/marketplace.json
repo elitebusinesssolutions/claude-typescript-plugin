@@ -1,0 +1,17 @@
+{
+  "name": "elite-ts-marketplace",
+  "description": "Shared TypeScript lint/format/type-check hooks and skills",
+  "owner": {
+    "name": "elitebusinesssolutions"
+  },
+  "plugins": [
+    {
+      "name": "elite-ts",
+      "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
+      "source": {
+        "source": "github",
+        "repo": "elitebusinesssolutions/elite-typescript-plugin"
+      }
+    }
+  ]
+}

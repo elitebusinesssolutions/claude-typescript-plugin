@@ -1,0 +1,37 @@
+{
+  "skill_name": "setup-formatting",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up Prettier, ESLint, EditorConfig, and format-on-save for this project (sample-node-project — a plain Node project, no framework, no TypeScript, no existing config).",
+      "expected_output": "Creates a flat ESLint config appropriate to a plain Node project (no Next.js/TypeScript-specific config), adds lint/format npm scripts, .prettierrc, .editorconfig, and .vscode/settings.json + extensions.json.",
+      "files": [
+        "evals/files/sample-node-project/package.json",
+        "evals/files/sample-node-project/src/index.js"
+      ],
+      "expectations": [
+        "Creates eslint.config.mjs using @eslint/js (not the Next.js plugin, since next isn't a dependency, and not typescript-eslint, since there's no tsconfig.json)",
+        "Adds a `lint` script (eslint .) and a `format` script (prettier --write .) to package.json",
+        "Creates .prettierrc with printWidth/trailingComma settings",
+        "Creates .vscode/settings.json with editor.formatOnSave true and the ESLint fixAll code action, plus .vscode/extensions.json recommending the ESLint and Prettier extensions",
+        "Creates .editorconfig with the documented indent/charset/line-ending settings",
+        "Does not attempt any TypeScript-specific ESLint setup since no tsconfig.json is present"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Set up Prettier and ESLint for this project (sample-node-project-with-prettierrc — same as before, but it already has a .prettierrc).",
+      "expected_output": "Leaves the existing .prettierrc untouched and reports its current contents instead of overwriting it.",
+      "files": [
+        "evals/files/sample-node-project-with-prettierrc/package.json",
+        "evals/files/sample-node-project-with-prettierrc/src/index.js",
+        "evals/files/sample-node-project-with-prettierrc/.prettierrc"
+      ],
+      "expectations": [
+        "Does not overwrite the existing .prettierrc (printWidth 120, semi true)",
+        "Reports the existing .prettierrc contents back to the user instead of silently replacing them",
+        "Still proceeds with the other setup steps (ESLint config, scripts, editorconfig, vscode settings)"
+      ]
+    }
+  ]
+}

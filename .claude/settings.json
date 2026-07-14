@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/hooks/format.js"],
+            "timeout": 30,
+            "statusMessage": "Linting and formatting..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/hooks/stop-check.js"],
+            "timeout": 120,
+            "statusMessage": "Running type-check and tests..."
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  }
+}

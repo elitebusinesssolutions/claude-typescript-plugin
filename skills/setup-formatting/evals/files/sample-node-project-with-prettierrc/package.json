@@ -1,0 +1,7 @@
+{
+  "name": "sample-node-project",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}

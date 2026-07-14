@@ -1,0 +1,8 @@
+{
+  "name": "elite-ts",
+  "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
+  "version": "0.1.0",
+  "repository": "https://github.com/elitebusinesssolutions/elite-typescript-plugin",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}
