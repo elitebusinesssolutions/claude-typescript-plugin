@@ -2,6 +2,7 @@
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { truncatedOutput } = require("./lib/output");
 
 try {
   fs.readFileSync(0, "utf8");
@@ -93,7 +94,7 @@ async function main() {
         parts.push("TypeScript ✓");
       } else {
         failed = true;
-        const out = (tsc.stdout + tsc.stderr).trim().split("\n").slice(0, 25).join("\n");
+        const out = truncatedOutput(tsc.stdout, tsc.stderr, { head: 25 });
         parts.push(`TypeScript errors:\n${out}`);
       }
     }
@@ -107,7 +108,7 @@ async function main() {
         parts.push("Tests ✓");
       } else {
         failed = true;
-        const out = (test.stdout + test.stderr).trim().split("\n").slice(-30).join("\n");
+        const out = truncatedOutput(test.stdout, test.stderr, { tail: 30 });
         parts.push(`Test failures:\n${out}`);
       }
     }

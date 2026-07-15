@@ -21,9 +21,9 @@ If none exists, create a flat config baseline appropriate to the project:
       plugins: { "@next/next": next },
       rules: {
         ...next.configs.recommended.rules,
-        ...next.configs["core-web-vitals"].rules,
-      },
-    },
+        ...next.configs["core-web-vitals"].rules
+      }
+    }
   ];
   ```
 
@@ -108,7 +108,43 @@ Also create `.vscode/extensions.json` (or merge into it) recommending `dbaeumer.
 
 If this is a project using the elite-ts plugin, PostToolUse formatting is already provided by `hooks/format.js` via `hooks/hooks.json` — no `.claude/settings.json` changes are needed.
 
-For a project repo without this plugin, copy the hook script and wire it up:
+For a project repo without this plugin, copy the hook script and its shared helper and wire it up. First, create `.claude/hooks/lib/output.js` with this content:
+
+```js
+// Shared helper for both hook scripts (format.js, stop-check.js): turns a
+// spawned process's stdout/stderr into a single truncated string suitable
+// for a failure message.
+//
+// stdout and stderr are joined with an explicit "\n" separator before being
+// trimmed/split — without that separator, a stdout chunk that doesn't already
+// end in its own trailing newline would have its last line silently merge
+// with stderr's first line into one garbled line. Empty streams are dropped
+// before joining so a missing stdout or stderr doesn't leave a stray blank
+// line at the start/end/middle of the result.
+//
+// `head`/`tail` mirror Array.prototype.slice(0, n) / slice(-n) — pass
+// whichever matches how the caller wants to truncate (head for output where
+// the earliest lines matter most, e.g. tsc; tail for output where the most
+// recent lines matter most, e.g. a test runner's final summary). Passing
+// neither returns the full (trimmed, joined) output.
+function truncatedOutput(stdout, stderr, { head, tail } = {}) {
+  const combined = [stdout, stderr]
+    // Strip any trailing newline(s) each stream already ends with, so joining
+    // always inserts exactly one separator — never zero (the merge bug) and
+    // never an extra blank line (when a stream already ended in "\n").
+    .map((s) => (typeof s === "string" ? s.replace(/(\r?\n)+$/, "") : ""))
+    .filter((s) => s.length > 0)
+    .join("\n")
+    .trim();
+
+  const lines = combined.split(/\r?\n/);
+  const sliced = head != null ? lines.slice(0, head) : tail != null ? lines.slice(-tail) : lines;
+
+  return sliced.join("\n");
+}
+
+module.exports = { truncatedOutput };
+```
 
 **a. Create `.claude/hooks/format.js`** with this content:
 
@@ -117,6 +153,7 @@ For a project repo without this plugin, copy the hook script and wire it up:
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { truncatedOutput } = require("./lib/output");
 
 try {
   const d = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -130,56 +167,64 @@ try {
   // package.json, etc. produces noisy "fatal" errors for unsupported file types.
   //
   // Only invoke it if this project actually has eslint installed. Without this
-  // gate, `npx eslint` in a project with no eslint devDependency commonly exits
-  // 1 — the same code ESLint itself uses for "ran fine, found lint issues" — so
-  // a project that simply doesn't use ESLint would get misreported as broken.
+  // gate, `npx eslint` in a project with no eslint devDependency falls back to
+  // npx's package-resolution/prompt behavior, which commonly exits 1 — the same
+  // code ESLint itself uses for "ran fine, found lint issues" — so a project
+  // that simply doesn't use ESLint would get misreported as having lint errors
+  // (or, before this fix, have that failure silently swallowed).
   const eslintBin = path.join(
     cwd,
     "node_modules",
     ".bin",
-    process.platform === "win32" ? "eslint.cmd" : "eslint",
+    process.platform === "win32" ? "eslint.cmd" : "eslint"
   );
-  if (/\.(ts|tsx|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
-    const eslint = spawnSync("npx", ["eslint", "--fix", f], {
+  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
+    // Spawn the already-resolved binary directly rather than `npx eslint` — npx
+    // re-resolves the package on every invocation, which is a wasted extra
+    // process layer on a hook that fires on nearly every Write/Edit tool call.
+    // `shell: true` is kept so Windows' `eslint.cmd` still resolves correctly.
+    const eslint = spawnSync(eslintBin, ["--fix", f], {
       cwd,
       encoding: "utf8",
       shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"]
     });
     // Exit 1 = unfixable lint warnings (expected — ESLint ran fine and found issues).
     // Anything else (2 = fatal config/parse error, non-standard codes, null = killed)
     // means linting silently never happened even though eslint is installed — report it.
     if (eslint.status !== 0 && eslint.status !== 1) {
-      const detail = ((eslint.stdout || "") + (eslint.stderr || ""))
-        .trim()
-        .split("\n")
-        .slice(0, 10)
-        .join("\n");
+      const detail = truncatedOutput(eslint.stdout, eslint.stderr, { head: 10 });
       messages.push(
-        `ESLint did not run on ${path.basename(f)} (exit ${eslint.status ?? `signal ${eslint.signal}`}) — linting was not applied:\n${detail}`,
+        `ESLint did not run on ${path.basename(f)} (exit ${eslint.status ?? `signal ${eslint.signal}`}) — linting was not applied:\n${detail}`
       );
     }
   }
 
-  const prettier = spawnSync(
-    "npx",
-    ["prettier", "--write", "--ignore-unknown", f],
-    {
+  // Same rationale as the ESLint gate above: without this, a project with no
+  // prettier devDependency triggers `npx prettier`'s package-resolution/install
+  // behavior on every single Write/Edit, and any resulting non-zero exit gets
+  // misreported below as a formatting failure rather than "prettier isn't set up".
+  const prettierBin = path.join(
+    cwd,
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "prettier.cmd" : "prettier"
+  );
+  if (fs.existsSync(prettierBin)) {
+    // Same rationale as the ESLint spawn above: use the already-resolved bin
+    // path directly instead of routing through `npx prettier`.
+    const prettier = spawnSync(prettierBin, ["--write", "--ignore-unknown", f], {
       cwd,
       encoding: "utf8",
       shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  if (prettier.status !== 0) {
-    const detail = ((prettier.stdout || "") + (prettier.stderr || ""))
-      .trim()
-      .split("\n")
-      .slice(0, 10)
-      .join("\n");
-    messages.push(
-      `Prettier error on ${path.basename(f)} (exit ${prettier.status ?? `signal ${prettier.signal}`}) — formatting was not applied:\n${detail}`,
-    );
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    if (prettier.status !== 0) {
+      const detail = truncatedOutput(prettier.stdout, prettier.stderr, { head: 10 });
+      messages.push(
+        `Prettier error on ${path.basename(f)} (exit ${prettier.status ?? `signal ${prettier.signal}`}) — formatting was not applied:\n${detail}`
+      );
+    }
   }
 
   // Emit a single JSON payload — concatenated JSON objects are invalid and may be ignored.
@@ -188,12 +233,15 @@ try {
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: messages.join("\n\n"),
-        },
-      }),
+          additionalContext: messages.join("\n\n")
+        }
+      })
     );
   }
 } catch (err) {
+  // Never let an unexpected input shape (e.g. a different harness's event schema)
+  // crash the hook uncaught — that's a non-blocking error, but it's silent and
+  // gives no signal that formatting was skipped. Log to stderr and exit clean.
   process.stderr.write(`format.js: skipping — ${err.message}\n`);
   process.exit(0);
 }
