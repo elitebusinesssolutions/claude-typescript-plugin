@@ -108,9 +108,7 @@ Also create `.vscode/extensions.json` (or merge into it) recommending `dbaeumer.
 
 If this is a project using the elite-ts plugin, PostToolUse formatting is already provided by `hooks/format.js` via `hooks/hooks.json` — no `.claude/settings.json` changes are needed.
 
-For a project repo without this plugin, copy the hook script and its shared helper and wire it up:
-
-**a. Create `.claude/hooks/lib/output.js`** with this content:
+For a project repo without this plugin, copy the hook script and its shared helper and wire it up. First, create `.claude/hooks/lib/output.js` with this content:
 
 ```js
 // Shared helper for both hook scripts (format.js, stop-check.js): turns a
