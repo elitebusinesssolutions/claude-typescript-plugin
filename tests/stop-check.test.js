@@ -6,21 +6,35 @@ const os = require("os");
 const path = require("path");
 const { runHook, pathWithoutStubs } = require("./helpers/run-hook");
 
-// stop-check.js only runs tsc if tsconfig.json exists, and only runs `npm
-// test` if package.json declares a test script — this fixture provides both
-// so tests can exercise the actual spawnSync/stub-bin invocation paths.
-// `testScript`/`git`/`gitDirty` let tests exercise the --changed-appending
+// stop-check.js only runs tsc if tsconfig.json exists, and only runs the test
+// script if package.json declares one — this fixture provides both so tests
+// can exercise the actual spawnSync/stub-bin invocation paths. `testScript`/
+// `git`/`gitDirty`/`untrackedFile` let tests exercise the --changed-appending
 // logic, which only kicks in for a vitest test script, in an actual git
 // repo, that also has a real diff vs HEAD to scope the run to — a clean
 // working tree must fall back to the full suite (see the regression test
-// below for why: an empty --changed run exits 0 as a false pass).
-function withProject(fn, { testScript = "echo test", git = false, gitDirty = false } = {}) {
+// below for why: an empty --changed run exits 0 as a false pass). `lockfile`
+// lets tests exercise package-manager detection (yarn.lock/pnpm-lock.yaml
+// instead of the npm default).
+function withProject(
+  fn,
+  {
+    testScript = "echo test",
+    git = false,
+    gitDirty = false,
+    untrackedFile = false,
+    lockfile = null
+  } = {}
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elite-ts-hook-test-"));
   fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
   fs.writeFileSync(
     path.join(dir, "package.json"),
     JSON.stringify({ name: "x", scripts: { test: testScript } })
   );
+  if (lockfile) {
+    fs.writeFileSync(path.join(dir, lockfile), "");
+  }
   if (git) {
     const gitOpts = { cwd: dir, stdio: "ignore" };
     execFileSync("git", ["init", "--quiet"], gitOpts);
@@ -29,9 +43,15 @@ function withProject(fn, { testScript = "echo test", git = false, gitDirty = fal
     execFileSync("git", ["add", "-A"], gitOpts);
     execFileSync("git", ["commit", "--quiet", "-m", "initial"], gitOpts);
     if (gitDirty) {
-      // Modify a tracked file so `git diff --name-only HEAD` actually
-      // reports something — this is what makes --changed meaningful.
+      // Modify a tracked file so `git status --porcelain` actually reports
+      // something — this is what makes --changed meaningful.
       fs.appendFileSync(path.join(dir, "package.json"), "\n");
+    }
+    if (untrackedFile) {
+      // A brand-new file that's never been `git add`-ed. Regression coverage
+      // for the fact that a plain `git diff` can't see this at all, but
+      // `git status --porcelain` (what the hook actually probes with) can.
+      fs.writeFileSync(path.join(dir, "new-file.txt"), "new\n");
     }
   }
   try {
@@ -176,13 +196,15 @@ test("tsc and npm test run concurrently, not sequentially", () => {
 // vitest (Jest's equivalent flag is spelled differently, and other runners
 // don't have one), there's a real git repo to diff against, and that diff is
 // non-empty (see the regression test below for why the last part matters).
-function argsUsedFor(cwd, extraEnv) {
+// `recordEnvVar` picks which stub binary's args get captured — defaults to
+// npm, but yarn/pnpm-detection tests point it at the matching stub instead.
+function argsUsedFor(cwd, extraEnv, { recordEnvVar = "STUB_NPM_RECORD_ARGS_TO" } = {}) {
   const argsFile = path.join(cwd, "npm-args.txt");
   run(
     {
       STUB_TSC_STATUS: "0",
       STUB_NPM_TEST_STATUS: "0",
-      STUB_NPM_RECORD_ARGS_TO: argsFile,
+      [recordEnvVar]: argsFile,
       ...extraEnv
     },
     cwd
@@ -226,6 +248,78 @@ test("vitest test script in a git repo with a clean working tree -> falls back t
     git: true,
     gitDirty: false
   });
+});
+
+// Regression test: a plain `git diff` can't see untracked (never `git add`-ed)
+// files, so gating --changed on it would miss a session that only adds new
+// files. The hook probes with `git status --porcelain` instead, which does
+// see untracked files.
+test("vitest test script with only an untracked new file -> --changed is still appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test -- --changed"), {
+    testScript: "vitest",
+    git: true,
+    untrackedFile: true
+  });
+});
+
+// Regression test: npm's `-- extra args` forwarding appends to the end of the
+// whole script string, not to a specific command within it — so a chained
+// script would have --changed land on the wrong command. usesVitestAsSoleCommand
+// excludes chained scripts entirely rather than guessing which segment is vitest.
+test("chained vitest script -> --changed is not appended even with a real diff", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
+    testScript: "vitest run && npm run lint",
+    git: true,
+    gitDirty: true
+  });
+});
+
+// Regression test: a bare substring match on "vitest" would also fire for a
+// script that merely mentions vitest without vitest being the command
+// actually invoked, appending a flag that script doesn't understand.
+test("script that only mentions vitest as a substring -> --changed is not appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
+    testScript: "node scripts/vitest-config-check.mjs",
+    git: true,
+    gitDirty: true
+  });
+});
+
+// Positive control for the two regression tests above: a legitimate
+// env-var-prefixed vitest invocation should still be detected and scoped.
+test("vitest script with a cross-env/env-var prefix -> --changed is still appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test -- --changed"), {
+    testScript: "cross-env CI=true vitest run",
+    git: true,
+    gitDirty: true
+  });
+});
+
+// Regression tests for the hardcoded-`npm` gap: the test script should run
+// through whichever package manager the project actually uses, detected via
+// lockfile, with the correct arg-forwarding syntax for each (npm/pnpm need a
+// literal `--`; yarn forwards extra args directly and would pass a literal
+// "--" through to vitest as an argument if given one).
+test("yarn.lock present -> test runs via yarn, --changed forwarded without --", () => {
+  withProject(
+    (cwd) =>
+      assert.equal(
+        argsUsedFor(cwd, {}, { recordEnvVar: "STUB_YARN_RECORD_ARGS_TO" }),
+        "test --changed"
+      ),
+    { testScript: "vitest", git: true, gitDirty: true, lockfile: "yarn.lock" }
+  );
+});
+
+test("pnpm-lock.yaml present -> test runs via pnpm, --changed forwarded with --", () => {
+  withProject(
+    (cwd) =>
+      assert.equal(
+        argsUsedFor(cwd, {}, { recordEnvVar: "STUB_PNPM_RECORD_ARGS_TO" }),
+        "test -- --changed"
+      ),
+    { testScript: "vitest", git: true, gitDirty: true, lockfile: "pnpm-lock.yaml" }
+  );
 });
 
 // Regression tests for the bugs this suite was written to catch: without
