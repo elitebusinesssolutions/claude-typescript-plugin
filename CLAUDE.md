@@ -1,9 +1,9 @@
-# elite-typescript-plugin — Development Guide
+# claude-typescript-plugin — Development Guide
 
 This is the elite-ts Claude Code plugin. It ships a shared formatting-setup skill and lint/format/type-check hooks for any TypeScript or JavaScript project — no Next.js or .NET assumptions. Install it via:
 
 ```bash
-claude plugin marketplace add elitebusinesssolutions/elite-typescript-plugin
+claude plugin marketplace add elitebusinesssolutions/claude-typescript-plugin
 claude plugin install elite-ts@elite-ts-marketplace
 ```
 
@@ -20,7 +20,7 @@ Official docs this file enforces:
 ## Directory layout
 
 ```text
-elite-typescript-plugin/
+claude-typescript-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json          # Plugin identity (name, version, description)
 │   └── marketplace.json     # elite-ts marketplace registration
@@ -56,7 +56,7 @@ Reference: [Plugin manifest schema](https://code.claude.com/docs/en/plugins-refe
   "name": "elite-ts",
   "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
   "version": "0.1.0",
-  "repository": "https://github.com/elitebusinesssolutions/elite-typescript-plugin",
+  "repository": "https://github.com/elitebusinesssolutions/claude-typescript-plugin",
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json"
 }
@@ -355,7 +355,7 @@ Reference: [Plugin marketplaces](https://code.claude.com/docs/en/plugin-marketpl
   "plugins": [
     {
       "name": "elite-ts",
-      "source": { "source": "github", "repo": "elitebusinesssolutions/elite-typescript-plugin" }
+      "source": { "source": "github", "repo": "elitebusinesssolutions/claude-typescript-plugin" }
     }
   ]
 }
@@ -364,7 +364,7 @@ Reference: [Plugin marketplaces](https://code.claude.com/docs/en/plugin-marketpl
 This file registers the elite-ts marketplace. Users add it and install the plugin with:
 
 ```bash
-claude plugin marketplace add elitebusinesssolutions/elite-typescript-plugin
+claude plugin marketplace add elitebusinesssolutions/claude-typescript-plugin
 claude plugin install elite-ts@elite-ts-marketplace
 ```
 
@@ -406,7 +406,7 @@ These are caught by `claude plugin validate` or by reading the official docs:
 
 Reference: [Conventional Commits spec](https://www.conventionalcommits.org/en/v1.0.0/)
 
-This repo (`elite-typescript-plugin`) has no `dev` branch — only `main`. Branch from and target `main`.
+This repo (`claude-typescript-plugin`) has no `dev` branch — only `main`. Branch from and target `main`.
 
 ### Branch naming
 

@@ -1,4 +1,4 @@
-# elite-typescript-plugin
+# claude-typescript-plugin
 
 Shared Claude Code lint/format/type-check hooks and a formatting-setup skill for TypeScript/JavaScript projects. Framework-agnostic — no Next.js or .NET assumptions.
 
@@ -9,7 +9,7 @@ This is the personal, one-machine install path. It works the same way whether or
 Add the marketplace:
 
 ```bash
-claude plugin marketplace add elitebusinesssolutions/elite-typescript-plugin
+claude plugin marketplace add elitebusinesssolutions/claude-typescript-plugin
 ```
 
 Then install the plugin:
@@ -21,7 +21,7 @@ claude plugin install elite-ts@elite-ts-marketplace
 This plugin can also be used with [copilot](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing) by replacing `claude` with `copilot`. E.g.
 
 ```bash
-copilot plugin marketplace add elitebusinesssolutions/elite-typescript-plugin
+copilot plugin marketplace add elitebusinesssolutions/claude-typescript-plugin
 copilot plugin install elite-ts@elite-ts-marketplace
 ```
 
@@ -43,7 +43,7 @@ Running `claude plugin install` locally only configures your own machine — it 
     "elite-ts-marketplace": {
       "source": {
         "source": "github",
-        "repo": "elitebusinesssolutions/elite-typescript-plugin"
+        "repo": "elitebusinesssolutions/claude-typescript-plugin"
       },
       "autoUpdate": true
     }

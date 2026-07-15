@@ -1,5 +1,5 @@
 {
-  "name": "elite-typescript-plugin",
+  "name": "claude-typescript-plugin",
   "private": true,
   "version": "0.1.0",
   "description": "Test suite for the elite-ts Claude Code plugin's hook scripts",

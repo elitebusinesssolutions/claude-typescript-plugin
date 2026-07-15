@@ -10,7 +10,7 @@
       "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
       "source": {
         "source": "github",
-        "repo": "elitebusinesssolutions/elite-typescript-plugin"
+        "repo": "elitebusinesssolutions/claude-typescript-plugin"
       }
     }
   ]
