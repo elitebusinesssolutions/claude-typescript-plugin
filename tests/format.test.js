@@ -92,6 +92,27 @@ test("non-JS/TS files skip eslint entirely but still run prettier", () => {
   });
 });
 
+test(".mts and .cts files DO trigger eslint (Node ESM/CJS TS entrypoints)", () => {
+  withEslintProject((cwd) => {
+    for (const file of ["vite.config.mts", "vite.config.cts"]) {
+      const r = run(
+        { tool_name: "Write", tool_input: { file_path: file } },
+        {
+          STUB_ESLINT_STATUS: "2",
+          STUB_ESLINT_STDERR: "ESLint couldn't find a configuration file",
+          STUB_PRETTIER_STATUS: "0"
+        },
+        cwd
+      );
+      const out = JSON.parse(r.stdout);
+      assert.match(
+        out.hookSpecificOutput.additionalContext,
+        new RegExp(`ESLint did not run on ${file.replace(/\./g, "\\.")}`)
+      );
+    }
+  });
+});
+
 test("project without eslint installed skips eslint silently (no false failure)", () => {
   // No node_modules/.bin/eslint fixture here — simulates a project that just
   // doesn't use ESLint. Even though the stub is configured to "fail", it must

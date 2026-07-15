@@ -26,7 +26,7 @@ try {
     ".bin",
     process.platform === "win32" ? "eslint.cmd" : "eslint"
   );
-  if (/\.(ts|tsx|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
+  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
     const eslint = spawnSync("npx", ["eslint", "--fix", f], {
       cwd,
       encoding: "utf8",
