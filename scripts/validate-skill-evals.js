@@ -8,14 +8,18 @@ const { execFileSync } = require("child_process");
 const REPO_ROOT = path.join(__dirname, "..");
 
 function changedSkillNames(baseRef) {
-  const diff = execFileSync(
-    "git",
-    ["diff", "--name-only", `${baseRef}...HEAD`],
-    {
+  let diff;
+  try {
+    diff = execFileSync("git", ["diff", "--name-only", `${baseRef}...HEAD`], {
       cwd: REPO_ROOT,
-      encoding: "utf8",
-    },
-  );
+      encoding: "utf8"
+    });
+  } catch (err) {
+    throw new Error(
+      `could not diff against base ref "${baseRef}" (unfetched ref, typo, or a shallow clone missing the base commit): ${err.message}`,
+      { cause: err }
+    );
+  }
 
   const names = new Set();
   for (const line of diff.split("\n")) {
@@ -37,9 +41,7 @@ function validateEvalsJson(data, skillName) {
   if (typeof data.skill_name !== "string" || data.skill_name.length === 0) {
     errors.push("skill_name must be a non-empty string");
   } else if (data.skill_name !== skillName) {
-    errors.push(
-      `skill_name "${data.skill_name}" does not match its directory name "${skillName}"`,
-    );
+    errors.push(`skill_name "${data.skill_name}" does not match its directory name "${skillName}"`);
   }
 
   if (!Array.isArray(data.evals) || data.evals.length === 0) {
@@ -59,29 +61,17 @@ function validateEvalsJson(data, skillName) {
       seenIds.add(evalCase.id);
     }
 
-    if (
-      typeof evalCase.prompt !== "string" ||
-      evalCase.prompt.trim().length === 0
-    ) {
+    if (typeof evalCase.prompt !== "string" || evalCase.prompt.trim().length === 0) {
       errors.push(`${label}.prompt must be a non-empty string`);
     }
 
     if (evalCase.expectations !== undefined) {
-      if (
-        !Array.isArray(evalCase.expectations) ||
-        evalCase.expectations.length === 0
-      ) {
-        errors.push(
-          `${label}.expectations, if present, must be a non-empty array`,
-        );
+      if (!Array.isArray(evalCase.expectations) || evalCase.expectations.length === 0) {
+        errors.push(`${label}.expectations, if present, must be a non-empty array`);
       } else if (
-        evalCase.expectations.some(
-          (e) => typeof e !== "string" || e.trim().length === 0,
-        )
+        evalCase.expectations.some((e) => typeof e !== "string" || e.trim().length === 0)
       ) {
-        errors.push(
-          `${label}.expectations must contain only non-empty strings`,
-        );
+        errors.push(`${label}.expectations must contain only non-empty strings`);
       }
     }
   });
@@ -96,7 +86,13 @@ function main() {
     process.exit(1);
   }
 
-  const skillNames = changedSkillNames(baseRef);
+  let skillNames;
+  try {
+    skillNames = changedSkillNames(baseRef);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
   if (skillNames.length === 0) {
     console.log("No changed files under skills/ — nothing to validate.");
     return;
@@ -105,17 +101,9 @@ function main() {
   let hadFailure = false;
 
   for (const skillName of skillNames) {
-    const evalsPath = path.join(
-      REPO_ROOT,
-      "skills",
-      skillName,
-      "evals",
-      "evals.json",
-    );
+    const evalsPath = path.join(REPO_ROOT, "skills", skillName, "evals", "evals.json");
     if (!fs.existsSync(evalsPath)) {
-      console.log(
-        `- ${skillName}: no evals/evals.json (not all skills need one) — skipped`,
-      );
+      console.log(`- ${skillName}: no evals/evals.json (not all skills need one) — skipped`);
       continue;
     }
 
@@ -123,18 +111,14 @@ function main() {
     try {
       data = JSON.parse(fs.readFileSync(evalsPath, "utf8"));
     } catch (err) {
-      console.error(
-        `- ${skillName}: evals/evals.json is not valid JSON (${err.message})`,
-      );
+      console.error(`- ${skillName}: evals/evals.json is not valid JSON (${err.message})`);
       hadFailure = true;
       continue;
     }
 
     const errors = validateEvalsJson(data, skillName);
     if (errors.length === 0) {
-      console.log(
-        `- ${skillName}: evals/evals.json OK (${data.evals.length} eval case(s))`,
-      );
+      console.log(`- ${skillName}: evals/evals.json OK (${data.evals.length} eval case(s))`);
     } else {
       console.error(`- ${skillName}: evals/evals.json is invalid:`);
       for (const error of errors) {
