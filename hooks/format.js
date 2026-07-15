@@ -2,6 +2,7 @@
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { truncatedOutput } = require("./lib/output");
 
 try {
   const d = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -38,8 +39,12 @@ try {
   // that simply doesn't use ESLint would get misreported as having lint errors
   // (or, before this fix, have that failure silently swallowed).
   const eslintBin = findBin("eslint");
-  if (/\.(ts|tsx|js|jsx|cjs|mjs)$/.test(f) && eslintBin) {
-    const eslint = spawnSync("npx", ["eslint", "--fix", f], {
+  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && eslintBin) {
+    // Spawn the already-resolved binary directly rather than `npx eslint` — npx
+    // re-resolves the package on every invocation, which is a wasted extra
+    // process layer on a hook that fires on nearly every Write/Edit tool call.
+    // `shell: true` is kept so Windows' `eslint.cmd` still resolves correctly.
+    const eslint = spawnSync(eslintBin, ["--fix", f], {
       cwd,
       encoding: "utf8",
       shell: true,
@@ -49,11 +54,7 @@ try {
     // Anything else (2 = fatal config/parse error, non-standard codes, null = killed)
     // means linting silently never happened even though eslint is installed — report it.
     if (eslint.status !== 0 && eslint.status !== 1) {
-      const detail = ((eslint.stdout || "") + (eslint.stderr || ""))
-        .trim()
-        .split("\n")
-        .slice(0, 10)
-        .join("\n");
+      const detail = truncatedOutput(eslint.stdout, eslint.stderr, { head: 10 });
       messages.push(
         `ESLint did not run on ${path.basename(f)} (exit ${eslint.status ?? `signal ${eslint.signal}`}) — linting was not applied:\n${detail}`
       );
@@ -66,18 +67,16 @@ try {
   // misreported below as a formatting failure rather than "prettier isn't set up".
   const prettierBin = findBin("prettier");
   if (prettierBin) {
-    const prettier = spawnSync("npx", ["prettier", "--write", "--ignore-unknown", f], {
+    // Same rationale as the ESLint spawn above: use the already-resolved bin
+    // path directly instead of routing through `npx prettier`.
+    const prettier = spawnSync(prettierBin, ["--write", "--ignore-unknown", f], {
       cwd,
       encoding: "utf8",
       shell: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     if (prettier.status !== 0) {
-      const detail = ((prettier.stdout || "") + (prettier.stderr || ""))
-        .trim()
-        .split("\n")
-        .slice(0, 10)
-        .join("\n");
+      const detail = truncatedOutput(prettier.stdout, prettier.stderr, { head: 10 });
       messages.push(
         `Prettier error on ${path.basename(f)} (exit ${prettier.status ?? `signal ${prettier.signal}`}) — formatting was not applied:\n${detail}`
       );
