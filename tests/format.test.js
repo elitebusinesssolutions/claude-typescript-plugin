@@ -3,17 +3,42 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runHook, pathWithoutStubs } = require("./helpers/run-hook");
+const { runHook } = require("./helpers/run-hook");
+
+// format.js now spawns the resolved eslint/prettier bin path directly instead
+// of going through `npx <tool>` (see hooks/format.js) — so, unlike the
+// PATH-level npx/npm stubs in tests/helpers/stub-bin, these fixture bin files
+// must themselves BE the executable eslint/prettier binaries format.js
+// resolves to and runs. Each is a tiny shim (a POSIX shell script, or a
+// Windows batch file) that execs a dedicated per-tool stub script controlled
+// by STUB_ESLINT_*/STUB_PRETTIER_* env vars — one stub script per tool,
+// rather than the shared argv[2]-dispatching tests/helpers/stub-bin/stub-npx.js,
+// because a direct-bin spawn's argv is just the tool's own args (e.g.
+// ["--fix", "src/foo.ts"]), not a tool name to switch on.
+const STUB_ESLINT_JS = path.join(__dirname, "helpers", "stub-bin", "stub-eslint.js");
+const STUB_PRETTIER_JS = path.join(__dirname, "helpers", "stub-bin", "stub-prettier.js");
+
+function writeStubBin(binPath, stubJsPath) {
+  if (process.platform === "win32") {
+    fs.writeFileSync(binPath, `@echo off\r\nnode "${stubJsPath}" %*\r\n`);
+  } else {
+    fs.writeFileSync(binPath, `#!/bin/sh\nexec node "${stubJsPath}" "$@"\n`);
+    fs.chmodSync(binPath, 0o755);
+  }
+}
 
 // format.js only invokes eslint/prettier if node_modules/.bin/<tool> exists in
 // cwd — this fixture simulates either or both being a project devDependency.
-function withProject({ eslint = false, prettier = false } = {}, fn) {
+// `brokenPrettier` simulates a resolved-but-non-executable bin (e.g. a
+// corrupt install) instead of a working stub.
+function withProject({ eslint = false, prettier = false, brokenPrettier = false } = {}, fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elite-ts-hook-test-"));
   const binDir = path.join(dir, "node_modules", ".bin");
   fs.mkdirSync(binDir, { recursive: true });
   const binPath = (name) => path.join(binDir, process.platform === "win32" ? `${name}.cmd` : name);
-  if (eslint) fs.writeFileSync(binPath("eslint"), "");
-  if (prettier) fs.writeFileSync(binPath("prettier"), "");
+  if (eslint) writeStubBin(binPath("eslint"), STUB_ESLINT_JS);
+  if (prettier) writeStubBin(binPath("prettier"), STUB_PRETTIER_JS);
+  if (brokenPrettier) fs.writeFileSync(binPath("prettier"), ""); // exists but not executable
   try {
     return fn(dir);
   } finally {
@@ -189,12 +214,19 @@ test("eslint failing with a non-standard exit code is still reported", () => {
   });
 });
 
-test("npx entirely missing from PATH still surfaces a prettier failure", () => {
-  withProject({ prettier: true }, (cwd) => {
+// Regression coverage for the direct-bin-spawn change (was previously "npx
+// entirely missing from PATH still surfaces a prettier failure" — that
+// scenario no longer applies now that format.js spawns the resolved bin path
+// directly instead of `npx prettier`, so PATH contents don't matter anymore).
+// What still matters: if node_modules/.bin/prettier exists but isn't a valid,
+// executable binary (e.g. a corrupt install), the hook must still report a
+// failure rather than silently doing nothing.
+test("prettierBin exists but is broken (non-executable) -> still surfaces a failure", () => {
+  withProject({ brokenPrettier: true }, (cwd) => {
     const result = runHook(
       "format.js",
       { tool_name: "Write", tool_input: { file_path: "src/foo.ts" } },
-      { path: pathWithoutStubs(), cwd }
+      { cwd }
     );
     assert.notEqual(result.stdout, "", "expected a failure to be reported");
     const out = JSON.parse(result.stdout);
