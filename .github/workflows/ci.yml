@@ -29,15 +29,21 @@ jobs:
           irm https://claude.ai/install.ps1 | iex
           $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
           [Environment]::SetEnvironmentVariable('PATH', "$currentPath;$env:USERPROFILE\.local\bin", 'User')
+        if: matrix.os == 'windows-latest'
+        name: install claude cli (windows)
+
+      - run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+          source ~/.bashrc
+        if: matrix.os == 'ubuntu-latest'
+        name: install claude cli (ubuntu)
+
+      - run: |
           claude plugin validate .
           mkdir plugin-test-project && cd plugin-test-project
           claude plugin marketplace add ../
           claude plugin install elite-ts@elite-ts-marketplace
           claude plugin list
-        if: matrix.os == 'windows-latest'
-
-      - run: |
-          curl -fsSL https://claude.ai/install.sh | bash
-          claude plugin validate .
-        if: matrix.os == 'ubuntu-latest'
+        name: validate and install plugin
 
