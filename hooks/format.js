@@ -27,7 +27,7 @@ try {
     ".bin",
     process.platform === "win32" ? "eslint.cmd" : "eslint"
   );
-  if (/\.(ts|tsx|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
+  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
     // Spawn the already-resolved binary directly rather than `npx eslint` — npx
     // re-resolves the package on every invocation, which is a wasted extra
     // process layer on a hook that fires on nearly every Write/Edit tool call.
