@@ -139,6 +139,38 @@ test("tsc timing out is reported as a block, not silence", () => {
   });
 });
 
+// tsc and `npm test` are independent (tsc --noEmit produces no artifact that
+// `npm test` could depend on), so they should run concurrently rather than
+// tsc_time + test_time sequentially. Sleep both stubs the same amount and
+// assert the hook's wall-clock time is close to one sleep, not the sum of
+// both — a generous threshold keeps this from flaking on a loaded CI box.
+test("tsc and npm test run concurrently, not sequentially", () => {
+  withProject((cwd) => {
+    const sleepMs = 300;
+    const start = Date.now();
+    const r = run(
+      {
+        STUB_TSC_SLEEP_MS: String(sleepMs),
+        STUB_TSC_STATUS: "0",
+        STUB_NPM_TEST_SLEEP_MS: String(sleepMs),
+        STUB_NPM_TEST_STATUS: "0"
+      },
+      cwd
+    );
+    const elapsed = Date.now() - start;
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, "");
+    // Sequential would take ~2 * sleepMs (600ms+); concurrent should land
+    // close to a single sleepMs. 500ms gives generous headroom above 300ms
+    // for process spawn overhead while staying well under the 600ms floor
+    // sequential execution would hit.
+    assert.ok(
+      elapsed < sleepMs * 2 - 100,
+      `expected concurrent execution (~${sleepMs}ms), took ${elapsed}ms`
+    );
+  });
+});
+
 // --changed scopes the test run to files affected by what's actually different
 // from git, instead of the whole suite — but only when the test runner is
 // vitest (Jest's equivalent flag is spelled differently, and other runners
