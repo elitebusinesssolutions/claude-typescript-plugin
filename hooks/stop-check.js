@@ -75,14 +75,30 @@ async function main() {
     // running the full suite, exactly as before.
     const usesVitest = /vitest/.test(testScript);
     const isGitRepo = fs.existsSync(path.join(cwd, ".git"));
-    const testArgs = usesVitest && isGitRepo ? ["test", "--", "--changed"] : ["test"];
 
-    // Kick off both checks concurrently — tsc (--noEmit) produces no build
-    // artifact that `npm test` could depend on, so there's no reason for one
-    // to wait on the other. Both `spawn` calls fire here, before either
-    // promise is awaited below, so wall-clock time is max(tsc, test) instead
-    // of tsc + test.
+    // Kick off tsc concurrently with the git-diff probe below — tsc (--noEmit)
+    // produces no build artifact that `npm test` could depend on, so there's
+    // no reason for one to wait on the other.
     const tscPromise = hasTsConfig ? runChild("npx", ["tsc", "--noEmit"], { cwd }) : null;
+
+    // Even with vitest + a git repo, `--changed` is only trustworthy if there
+    // is actually something to diff against. If the working tree is clean vs
+    // HEAD — e.g. code was committed earlier in the same session, before this
+    // Stop hook fired — `vitest --changed` matches zero test files and exits
+    // 0 with "No test files found", which reads as a pass even though no
+    // tests ran at all, silently hiding real regressions in the code that was
+    // just committed. Only use `--changed` when `git diff --name-only HEAD`
+    // proves there's a real diff to scope the run to; otherwise fall back to
+    // the full suite. Run through the same `runChild` helper as tsc/npm so a
+    // hung or slow `git` is bounded by HOOK_TIMEOUT_MS too, and treat a
+    // timed-out or failed probe as "no diff" rather than trusting --changed
+    // when we couldn't actually determine what changed.
+    let hasGitDiff = false;
+    if (usesVitest && isGitRepo) {
+      const diff = await runChild("git", ["diff", "--name-only", "HEAD"], { cwd });
+      hasGitDiff = !diff.signal && diff.status === 0 && diff.stdout.trim().length > 0;
+    }
+    const testArgs = usesVitest && isGitRepo && hasGitDiff ? ["test", "--", "--changed"] : ["test"];
     const testPromise = hasTestScript ? runChild("npm", testArgs, { cwd }) : null;
 
     if (tscPromise) {
