@@ -24,3 +24,14 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run validate-skill-evals -- origin/${{ github.base_ref }}
+
+      - run: |
+          irm https://claude.ai/install.ps1 | iex
+          claude plugin validate .
+        if: matrix.os == 'windows-latest'
+
+      - run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          claude plugin validate .
+        if: matrix.os == 'ubuntu-latest'
+
