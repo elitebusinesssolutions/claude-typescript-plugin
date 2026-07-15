@@ -2,6 +2,7 @@
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { truncatedOutput } = require("./lib/output");
 
 try {
   fs.readFileSync(0, "utf8");
@@ -25,22 +26,16 @@ try {
       cwd,
       encoding: "utf8",
       shell: true,
-      timeout: HOOK_TIMEOUT_MS,
+      timeout: HOOK_TIMEOUT_MS
     });
     if (tsc.signal) {
       failed = true;
-      parts.push(
-        `TypeScript check timed out (killed by ${tsc.signal}) — result unknown`,
-      );
+      parts.push(`TypeScript check timed out (killed by ${tsc.signal}) — result unknown`);
     } else if (tsc.status === 0) {
       parts.push("TypeScript ✓");
     } else {
       failed = true;
-      const out = (tsc.stdout + tsc.stderr)
-        .trim()
-        .split("\n")
-        .slice(0, 25)
-        .join("\n");
+      const out = truncatedOutput(tsc.stdout, tsc.stderr, { head: 25 });
       parts.push(`TypeScript errors:\n${out}`);
     }
   }
@@ -51,9 +46,7 @@ try {
   let hasTestScript = false;
   let testScript = "";
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
-    );
+    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8"));
     testScript = pkg?.scripts?.test ?? "";
     hasTestScript = Boolean(testScript);
   } catch {
@@ -69,14 +62,13 @@ try {
     // running the full suite, exactly as before.
     const usesVitest = /vitest/.test(testScript);
     const isGitRepo = fs.existsSync(path.join(cwd, ".git"));
-    const testArgs =
-      usesVitest && isGitRepo ? ["test", "--", "--changed"] : ["test"];
+    const testArgs = usesVitest && isGitRepo ? ["test", "--", "--changed"] : ["test"];
 
     const test = spawnSync("npm", testArgs, {
       cwd,
       encoding: "utf8",
       shell: true,
-      timeout: HOOK_TIMEOUT_MS,
+      timeout: HOOK_TIMEOUT_MS
     });
     if (test.signal) {
       failed = true;
@@ -85,19 +77,13 @@ try {
       parts.push("Tests ✓");
     } else {
       failed = true;
-      const out = (test.stdout + test.stderr)
-        .trim()
-        .split("\n")
-        .slice(-30)
-        .join("\n");
+      const out = truncatedOutput(test.stdout, test.stderr, { tail: 30 });
       parts.push(`Test failures:\n${out}`);
     }
   }
 
   if (failed) {
-    process.stdout.write(
-      JSON.stringify({ decision: "block", reason: parts.join("\n\n") }),
-    );
+    process.stdout.write(JSON.stringify({ decision: "block", reason: parts.join("\n\n") }));
   }
 } catch (err) {
   // A crash here would silently let the session stop without ever reporting
@@ -105,7 +91,7 @@ try {
   process.stdout.write(
     JSON.stringify({
       decision: "block",
-      reason: `stop-check.js crashed before it could run tsc/tests: ${err.message}`,
-    }),
+      reason: `stop-check.js crashed before it could run tsc/tests: ${err.message}`
+    })
   );
 }
