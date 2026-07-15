@@ -45,7 +45,16 @@ function withProject(
   const binPath = (name) => path.join(binDir, process.platform === "win32" ? `${name}.cmd` : name);
   if (eslint) writeStubBin(binPath("eslint"), STUB_ESLINT_JS);
   if (prettier) writeStubBin(binPath("prettier"), STUB_PRETTIER_JS);
-  if (brokenPrettier) fs.writeFileSync(binPath("prettier"), ""); // exists but not executable
+  if (brokenPrettier) {
+    if (process.platform === "win32") {
+      // An empty .cmd is a harmless no-op on Windows — cmd.exe runs it and exits
+      // 0, which wouldn't exercise the "broken bin" failure path at all. Write
+      // one that actually exits non-zero to simulate a corrupt/broken binary.
+      fs.writeFileSync(binPath("prettier"), "@echo off\r\nexit /b 1\r\n");
+    } else {
+      fs.writeFileSync(binPath("prettier"), ""); // exists but not executable
+    }
+  }
   let cwd = dir;
   if (nested) {
     cwd = path.join(dir, "packages", "sub");
