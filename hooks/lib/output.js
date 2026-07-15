@@ -19,12 +19,12 @@ function truncatedOutput(stdout, stderr, { head, tail } = {}) {
     // Strip any trailing newline(s) each stream already ends with, so joining
     // always inserts exactly one separator — never zero (the merge bug) and
     // never an extra blank line (when a stream already ended in "\n").
-    .map((s) => (typeof s === "string" ? s.replace(/\n+$/, "") : ""))
+    .map((s) => (typeof s === "string" ? s.replace(/(\r?\n)+$/, "") : ""))
     .filter((s) => s.length > 0)
     .join("\n")
     .trim();
 
-  const lines = combined.split("\n");
+  const lines = combined.split(/\r?\n/);
   const sliced = head != null ? lines.slice(0, head) : tail != null ? lines.slice(-tail) : lines;
 
   return sliced.join("\n");
