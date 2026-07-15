@@ -25,22 +25,16 @@ try {
       cwd,
       encoding: "utf8",
       shell: true,
-      timeout: HOOK_TIMEOUT_MS,
+      timeout: HOOK_TIMEOUT_MS
     });
     if (tsc.signal) {
       failed = true;
-      parts.push(
-        `TypeScript check timed out (killed by ${tsc.signal}) — result unknown`,
-      );
+      parts.push(`TypeScript check timed out (killed by ${tsc.signal}) — result unknown`);
     } else if (tsc.status === 0) {
       parts.push("TypeScript ✓");
     } else {
       failed = true;
-      const out = (tsc.stdout + tsc.stderr)
-        .trim()
-        .split("\n")
-        .slice(0, 25)
-        .join("\n");
+      const out = (tsc.stdout + tsc.stderr).trim().split("\n").slice(0, 25).join("\n");
       parts.push(`TypeScript errors:\n${out}`);
     }
   }
@@ -51,9 +45,7 @@ try {
   let hasTestScript = false;
   let testScript = "";
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
-    );
+    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8"));
     testScript = pkg?.scripts?.test ?? "";
     hasTestScript = Boolean(testScript);
   } catch {
@@ -69,14 +61,32 @@ try {
     // running the full suite, exactly as before.
     const usesVitest = /vitest/.test(testScript);
     const isGitRepo = fs.existsSync(path.join(cwd, ".git"));
-    const testArgs =
-      usesVitest && isGitRepo ? ["test", "--", "--changed"] : ["test"];
+
+    // Even with vitest + a git repo, `--changed` is only trustworthy if there
+    // is actually something to diff against. If the working tree is clean vs
+    // HEAD — e.g. code was committed earlier in the same session, before this
+    // Stop hook fired — `vitest --changed` matches zero test files and exits
+    // 0 with "No test files found", which reads as a pass even though no
+    // tests ran at all, silently hiding real regressions in the code that was
+    // just committed. Only use `--changed` when `git diff --name-only HEAD`
+    // proves there's a real diff to scope the run to; otherwise fall back to
+    // the full suite.
+    let hasGitDiff = false;
+    if (usesVitest && isGitRepo) {
+      const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], {
+        cwd,
+        encoding: "utf8",
+        shell: true
+      });
+      hasGitDiff = Boolean(diff.stdout && diff.stdout.trim().length > 0);
+    }
+    const testArgs = usesVitest && isGitRepo && hasGitDiff ? ["test", "--", "--changed"] : ["test"];
 
     const test = spawnSync("npm", testArgs, {
       cwd,
       encoding: "utf8",
       shell: true,
-      timeout: HOOK_TIMEOUT_MS,
+      timeout: HOOK_TIMEOUT_MS
     });
     if (test.signal) {
       failed = true;
@@ -85,19 +95,13 @@ try {
       parts.push("Tests ✓");
     } else {
       failed = true;
-      const out = (test.stdout + test.stderr)
-        .trim()
-        .split("\n")
-        .slice(-30)
-        .join("\n");
+      const out = (test.stdout + test.stderr).trim().split("\n").slice(-30).join("\n");
       parts.push(`Test failures:\n${out}`);
     }
   }
 
   if (failed) {
-    process.stdout.write(
-      JSON.stringify({ decision: "block", reason: parts.join("\n\n") }),
-    );
+    process.stdout.write(JSON.stringify({ decision: "block", reason: parts.join("\n\n") }));
   }
 } catch (err) {
   // A crash here would silently let the session stop without ever reporting
@@ -105,7 +109,7 @@ try {
   process.stdout.write(
     JSON.stringify({
       decision: "block",
-      reason: `stop-check.js crashed before it could run tsc/tests: ${err.message}`,
-    }),
+      reason: `stop-check.js crashed before it could run tsc/tests: ${err.message}`
+    })
   );
 }
