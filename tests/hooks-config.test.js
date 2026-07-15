@@ -52,7 +52,7 @@ test("project settings template uses documented node exec form", () => {
 // path-variable prefix is normalized away. Nothing else enforces this, so
 // this test diffs the two trees field-by-field to catch silent drift.
 function normalizeHookArgs(args) {
-  return (args ?? []).map((arg) =>
+  return (Array.isArray(args) ? args : []).map((arg) =>
     typeof arg === "string"
       ? arg.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\//, "").replace(/^\$\{CLAUDE_PROJECT_DIR\}\//, "")
       : arg
@@ -75,6 +75,12 @@ test("hooks/hooks.json and .claude/settings.json stay structurally in sync", () 
   for (const eventName of pluginEvents) {
     const pluginGroups = pluginHooks.hooks[eventName] ?? [];
     const settingsGroups = settings.hooks[eventName] ?? [];
+
+    assert.ok(Array.isArray(pluginGroups), `Expected hooks/hooks.json groups array for event "${eventName}"`);
+    assert.ok(
+      Array.isArray(settingsGroups),
+      `Expected .claude/settings.json groups array for event "${eventName}"`
+    );
 
     assert.strictEqual(
       settingsGroups.length,
