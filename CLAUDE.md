@@ -178,7 +178,7 @@ This resolves to the plugin's installation directory at runtime. Do not hardcode
 
 ### Keep `hooks/hooks.json` and `.claude/settings.json` in sync
 
-`.claude/settings.json` exists solely so this repo dogfoods its own hooks while you develop them — it's never shipped to or read by consumer projects (they only get `hooks/hooks.json`, loaded automatically since it's the standard location — `plugin.json` does not, and must not, also declare a `hooks` field pointing at it; see the [plugin.json](#pluginjson) field-rules table). The two files must stay structurally identical: same events, same matchers, same script list, same order, same `timeout`/`statusMessage` — the **only** difference is the path variable in `args`:
+`.claude/settings.json` exists solely so this repo dogfoods its own hooks while you develop them — it's never shipped to or read by consumer projects (they only get `hooks/hooks.json`, per the `hooks` field rule in [plugin.json](#pluginjson) above). The two files must stay structurally identical: same events, same matchers, same script list, same order, same `timeout`/`statusMessage` — the **only** difference is the path variable in `args`:
 
 | File                    | Path variable                             |
 | ----------------------- | ----------------------------------------- |
@@ -386,19 +386,19 @@ Rules:
 
 These are caught by `claude plugin validate` or by reading the official docs:
 
-| Mistake                                                          | Correct approach                                                                                                                                                         |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Putting `skills/` inside `.claude-plugin/`                       | `skills/` goes at the plugin root                                                                                                                                        |
-| Hardcoding `~/.claude/plugins/cache/...` paths in hooks          | Use `${CLAUDE_PLUGIN_ROOT}/hooks/my-hook.js` in `args`                                                                                                                   |
-| Using PowerShell glob to find hook scripts                       | Use exec form with `${CLAUDE_PLUGIN_ROOT}`                                                                                                                               |
-| Exit 1 to block a tool                                           | Exit 2 to block; exit 1 is a non-blocking error                                                                                                                          |
-| `console.log()` in hooks                                         | `process.stderr.write()` for messages, JSON to stdout for structured output                                                                                              |
-| Skill `description` that names the skill instead of the use-case | Write a sentence describing when to use it                                                                                                                               |
-| Not bumping `version` after a change                             | Bump version for every release                                                                                                                                           |
-| Committing secrets in hook scripts or skill bodies               | Use env vars                                                                                                                                                             |
-| Assuming every consumer project has TypeScript/ESLint installed  | Guard hooks on `tsconfig.json` / `node_modules/.bin/eslint` presence — see [Hook script guidelines](#hook-script-guidelines)                                             |
-| Install syntax `elite-ts-marketplace/elite-ts`                   | Correct syntax is `elite-ts@elite-ts-marketplace` (`<plugin>@<marketplace>`)                                                                                             |
-| `plugin.json`'s `hooks` field pointing at `./hooks/hooks.json`   | Omit the `hooks` field entirely — the standard location loads automatically, and declaring it explicitly fails the whole plugin's load with a duplicate-hooks-file error |
+| Mistake                                                          | Correct approach                                                                                                             |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Putting `skills/` inside `.claude-plugin/`                       | `skills/` goes at the plugin root                                                                                            |
+| Hardcoding `~/.claude/plugins/cache/...` paths in hooks          | Use `${CLAUDE_PLUGIN_ROOT}/hooks/my-hook.js` in `args`                                                                       |
+| Using PowerShell glob to find hook scripts                       | Use exec form with `${CLAUDE_PLUGIN_ROOT}`                                                                                   |
+| Exit 1 to block a tool                                           | Exit 2 to block; exit 1 is a non-blocking error                                                                              |
+| `console.log()` in hooks                                         | `process.stderr.write()` for messages, JSON to stdout for structured output                                                  |
+| Skill `description` that names the skill instead of the use-case | Write a sentence describing when to use it                                                                                   |
+| Not bumping `version` after a change                             | Bump version for every release                                                                                               |
+| Committing secrets in hook scripts or skill bodies               | Use env vars                                                                                                                 |
+| Assuming every consumer project has TypeScript/ESLint installed  | Guard hooks on `tsconfig.json` / `node_modules/.bin/eslint` presence — see [Hook script guidelines](#hook-script-guidelines) |
+| Install syntax `elite-ts-marketplace/elite-ts`                   | Correct syntax is `elite-ts@elite-ts-marketplace` (`<plugin>@<marketplace>`)                                                 |
+| `plugin.json`'s `hooks` field pointing at `./hooks/hooks.json`   | Omit it — see the `hooks` field rule in [plugin.json](#pluginjson)                                                           |
 
 ---
 
