@@ -57,21 +57,20 @@ Reference: [Plugin manifest schema](https://code.claude.com/docs/en/plugins-refe
   "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
   "version": "0.1.0",
   "repository": "https://github.com/elitebusinesssolutions/claude-typescript-plugin",
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }
 ```
 
 Field rules:
 
-| Field         | Rule                                                                                                                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | The namespace prefix — skills invoke as `/elite-ts:<skill>`. Keep it short, lowercase, hyphen-only.                                                                                                     |
-| `version`     | Bump this with every release. Users only get updates when the version field changes. Omitting it causes every commit to count as a new version, triggering reinstalls. Use semver: `MAJOR.MINOR.PATCH`. |
-| `description` | One sentence. Shown in the plugin manager.                                                                                                                                                              |
-| `repository`  | Full GitHub URL. Required for marketplace distribution.                                                                                                                                                 |
-| `skills`      | Optional. Points to a custom skill directory; adds to (not replaces) the default `skills/` scan. Our value `"./skills/"` is the default location — redundant but harmless.                              |
-| `hooks`       | Optional. Points to the hooks config file. Our value `"./hooks/hooks.json"` is the default location — redundant but explicit.                                                                           |
+| Field         | Rule                                                                                                                                                                                                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | The namespace prefix — skills invoke as `/elite-ts:<skill>`. Keep it short, lowercase, hyphen-only.                                                                                                                                                                        |
+| `version`     | Bump this with every release. Users only get updates when the version field changes. Omitting it causes every commit to count as a new version, triggering reinstalls. Use semver: `MAJOR.MINOR.PATCH`.                                                                    |
+| `description` | One sentence. Shown in the plugin manager.                                                                                                                                                                                                                                 |
+| `repository`  | Full GitHub URL. Required for marketplace distribution.                                                                                                                                                                                                                    |
+| `skills`      | Optional. Points to a custom skill directory; adds to (not replaces) the default `skills/` scan. Our value `"./skills/"` is the default location — redundant but harmless.                                                                                                 |
+| `hooks`       | Optional — and only for _additional_ hook files beyond the standard one. `hooks/hooks.json` is loaded automatically; do not also list it here. Doing so makes Claude Code report a duplicate-hooks-file error and fail to load the plugin entirely, so we omit this field. |
 
 Claude Code ignores unrecognized fields and reports extra fields as warnings (not errors) from `claude plugin validate`. Known component path fields (`skills`, `hooks`, `agents`, `mcpServers`, etc.) are all valid per the official schema.
 
@@ -179,7 +178,7 @@ This resolves to the plugin's installation directory at runtime. Do not hardcode
 
 ### Keep `hooks/hooks.json` and `.claude/settings.json` in sync
 
-`.claude/settings.json` exists solely so this repo dogfoods its own hooks while you develop them — it's never shipped to or read by consumer projects (they only get `hooks/hooks.json`, via `plugin.json`'s `hooks` field). The two files must stay structurally identical: same events, same matchers, same script list, same order, same `timeout`/`statusMessage` — the **only** difference is the path variable in `args`:
+`.claude/settings.json` exists solely so this repo dogfoods its own hooks while you develop them — it's never shipped to or read by consumer projects (they only get `hooks/hooks.json`, per the `hooks` field rule in [plugin.json](#pluginjson) above). The two files must stay structurally identical: same events, same matchers, same script list, same order, same `timeout`/`statusMessage` — the **only** difference is the path variable in `args`:
 
 | File                    | Path variable                             |
 | ----------------------- | ----------------------------------------- |
@@ -399,6 +398,7 @@ These are caught by `claude plugin validate` or by reading the official docs:
 | Committing secrets in hook scripts or skill bodies               | Use env vars                                                                                                                 |
 | Assuming every consumer project has TypeScript/ESLint installed  | Guard hooks on `tsconfig.json` / `node_modules/.bin/eslint` presence — see [Hook script guidelines](#hook-script-guidelines) |
 | Install syntax `elite-ts-marketplace/elite-ts`                   | Correct syntax is `elite-ts@elite-ts-marketplace` (`<plugin>@<marketplace>`)                                                 |
+| `plugin.json`'s `hooks` field pointing at `./hooks/hooks.json`   | Omit it — see the `hooks` field rule in [plugin.json](#pluginjson)                                                           |
 
 ---
 

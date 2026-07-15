@@ -24,3 +24,12 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run validate-skill-evals -- origin/${{ github.base_ref }}
+
+      - run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+          source ~/.bashrc
+          claude plugin validate .
+        if: matrix.os == 'ubuntu-latest'
+        name: claude plugin validate (ubuntu)
+
