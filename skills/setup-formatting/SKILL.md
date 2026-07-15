@@ -179,7 +179,11 @@ try {
     process.platform === "win32" ? "eslint.cmd" : "eslint"
   );
   if (/\.(ts|tsx|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
-    const eslint = spawnSync("npx", ["eslint", "--fix", f], {
+    // Spawn the already-resolved binary directly rather than `npx eslint` — npx
+    // re-resolves the package on every invocation, which is a wasted extra
+    // process layer on a hook that fires on nearly every Write/Edit tool call.
+    // `shell: true` is kept so Windows' `eslint.cmd` still resolves correctly.
+    const eslint = spawnSync(eslintBin, ["--fix", f], {
       cwd,
       encoding: "utf8",
       shell: true,
@@ -207,7 +211,9 @@ try {
     process.platform === "win32" ? "prettier.cmd" : "prettier"
   );
   if (fs.existsSync(prettierBin)) {
-    const prettier = spawnSync("npx", ["prettier", "--write", "--ignore-unknown", f], {
+    // Same rationale as the ESLint spawn above: use the already-resolved bin
+    // path directly instead of routing through `npx prettier`.
+    const prettier = spawnSync(prettierBin, ["--write", "--ignore-unknown", f], {
       cwd,
       encoding: "utf8",
       shell: true,
