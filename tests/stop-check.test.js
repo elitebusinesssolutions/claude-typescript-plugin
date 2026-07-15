@@ -13,9 +13,10 @@ const { runHook, pathWithoutStubs } = require("./helpers/run-hook");
 // logic, which only kicks in for a vitest test script, in an actual git
 // repo, that also has a real diff vs HEAD to scope the run to — a clean
 // working tree must fall back to the full suite (see the regression test
-// below for why: an empty --changed run exits 0 as a false pass). `lockfile`
-// lets tests exercise package-manager detection (yarn.lock/pnpm-lock.yaml
-// instead of the npm default).
+// below for why: an empty --changed run exits 0 as a false pass). `lockfile`/
+// `lockfiles` let tests exercise package-manager detection (yarn.lock/
+// pnpm-lock.yaml instead of the npm default). `noCommit` stops short of the
+// initial commit, leaving HEAD unborn (a brand-new repo with no commits yet).
 function withProject(
   fn,
   {
@@ -23,7 +24,9 @@ function withProject(
     git = false,
     gitDirty = false,
     untrackedFile = false,
-    lockfile = null
+    lockfile = null,
+    lockfiles = null,
+    noCommit = false
   } = {}
 ) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elite-ts-hook-test-"));
@@ -32,16 +35,21 @@ function withProject(
     path.join(dir, "package.json"),
     JSON.stringify({ name: "x", scripts: { test: testScript } })
   );
-  if (lockfile) {
-    fs.writeFileSync(path.join(dir, lockfile), "");
+  for (const name of lockfile ? [lockfile] : (lockfiles ?? [])) {
+    fs.writeFileSync(path.join(dir, name), "");
   }
   if (git) {
     const gitOpts = { cwd: dir, stdio: "ignore" };
     execFileSync("git", ["init", "--quiet"], gitOpts);
     execFileSync("git", ["config", "user.email", "test@example.com"], gitOpts);
     execFileSync("git", ["config", "user.name", "Test"], gitOpts);
-    execFileSync("git", ["add", "-A"], gitOpts);
-    execFileSync("git", ["commit", "--quiet", "-m", "initial"], gitOpts);
+    if (!noCommit) {
+      // Commit before writing the untracked/dirty fixtures below, so they
+      // stay out of this initial commit — otherwise `git add -A` would sweep
+      // the "untracked" file in and defeat the point of the fixture.
+      execFileSync("git", ["add", "-A"], gitOpts);
+      execFileSync("git", ["commit", "--quiet", "-m", "initial"], gitOpts);
+    }
     if (gitDirty) {
       // Modify a tracked file so `git status --porcelain` actually reports
       // something — this is what makes --changed meaningful.
@@ -267,6 +275,21 @@ test("vitest test script with only an untracked new file -> --changed is still a
   });
 });
 
+// Regression test: `git status --porcelain` exits 0 and lists untracked files
+// even with zero commits (an "unborn HEAD"), where the old `git diff
+// --name-only HEAD` probe would fail loudly instead. Without a HEAD-existence
+// guard, a brand-new git+vitest project's very first Stop hook run would get
+// --changed appended with no commit for vitest's own --changed to diff
+// against.
+test("vitest test script in a git repo with no commits yet -> falls back to the full suite", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
+    testScript: "vitest",
+    git: true,
+    noCommit: true,
+    untrackedFile: true
+  });
+});
+
 // Regression test: npm's `-- extra args` forwarding appends to the end of the
 // whole script string, not to a specific command within it — so a chained
 // script would have --changed land on the wrong command. usesVitestAsSoleCommand
@@ -301,7 +324,18 @@ test("script that only mentions vitest as a substring -> --changed is not append
   });
 });
 
-// Positive control for the two regression tests above: a legitimate
+// Regression test: a bare `vitest\b` word-boundary match is satisfied by any
+// non-word character immediately after "vitest" — including "-" and ":" — so
+// "vitest-ui" or "vitest:related" would be misdetected as vitest itself.
+test("script starting with vitest- (a different command) -> --changed is not appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
+    testScript: "vitest-ui run",
+    git: true,
+    gitDirty: true
+  });
+});
+
+// Positive control for the regression tests above: a legitimate
 // env-var-prefixed vitest invocation should still be detected and scoped.
 test("vitest script with a cross-env/env-var prefix -> --changed is still appended", () => {
   withProject((cwd) => assert.equal(argsUsedFor(cwd), "test -- --changed"), {
@@ -311,11 +345,26 @@ test("vitest script with a cross-env/env-var prefix -> --changed is still append
   });
 });
 
+// Positive control: CHAINED_SCRIPT_RE must not be fooled by an ordinary
+// quoted argument (e.g. a vitest test-name filter regex) that happens to
+// contain a chain-operator character — only genuinely unquoted chaining
+// should disable --changed.
+test("vitest script with a quoted argument containing | -> --changed is still appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test -- --changed"), {
+    testScript: "vitest run -t 'renders|updates'",
+    git: true,
+    gitDirty: true
+  });
+});
+
 // Regression tests for the hardcoded-`npm` gap: the test script should run
 // through whichever package manager the project actually uses, detected via
-// lockfile, with the correct arg-forwarding syntax for each (npm/pnpm need a
-// literal `--`; yarn forwards extra args directly and would pass a literal
-// "--" through to vitest as an argument if given one).
+// lockfile, with the correct arg-forwarding syntax for each. Only npm requires
+// a literal `--` marker to forward trailing args to the underlying script;
+// yarn AND pnpm both forward extra args directly and would pass a literal
+// "--" through to vitest as an argument if given one (verified empirically
+// against pnpm 10: `pnpm test -- --changed` forwards `["--", "--changed"]` to
+// the script, while `pnpm test --changed` correctly forwards `["--changed"]`).
 test("yarn.lock present -> test runs via yarn, --changed forwarded without --", () => {
   withProject(
     (cwd) =>
@@ -327,14 +376,33 @@ test("yarn.lock present -> test runs via yarn, --changed forwarded without --", 
   );
 });
 
-test("pnpm-lock.yaml present -> test runs via pnpm, --changed forwarded with --", () => {
+test("pnpm-lock.yaml present -> test runs via pnpm, --changed forwarded without --", () => {
   withProject(
     (cwd) =>
       assert.equal(
         argsUsedFor(cwd, {}, { recordEnvVar: "STUB_PNPM_RECORD_ARGS_TO" }),
-        "test -- --changed"
+        "test --changed"
       ),
     { testScript: "vitest", git: true, gitDirty: true, lockfile: "pnpm-lock.yaml" }
+  );
+});
+
+// Regression test: a repo mid-migration between package managers can have
+// both lockfiles present. Precedence isn't arbitrary — pnpm wins — but it
+// must stay deterministic and tested rather than silently drift.
+test("both pnpm-lock.yaml and yarn.lock present -> pnpm takes precedence", () => {
+  withProject(
+    (cwd) =>
+      assert.equal(
+        argsUsedFor(cwd, {}, { recordEnvVar: "STUB_PNPM_RECORD_ARGS_TO" }),
+        "test --changed"
+      ),
+    {
+      testScript: "vitest",
+      git: true,
+      gitDirty: true,
+      lockfiles: ["pnpm-lock.yaml", "yarn.lock"]
+    }
   );
 });
 
@@ -373,6 +441,27 @@ test("no package.json at all -> both checks are skipped silently", () => {
   const r = runHook("stop-check.js", {}, { path: pathWithoutStubs() });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, "");
+});
+
+// Regression test: neither tsc nor the test runner being resolvable on PATH
+// (npx/npm missing entirely, not just failing) must report a graceful
+// failure block, not crash the hook — this is the "shell absorbs a missing
+// binary as an ordinary non-zero exit" path (verified: with shell:true, a
+// missing binary surfaces via the shell's own close event, not Node's
+// 'error' event), which runChild/reportResult must still turn into normal
+// TypeScript errors:/Test failures: messages.
+test("tsc/test binaries not resolvable on PATH -> reported as failures, not a crash", () => {
+  withProject(
+    (cwd) => {
+      const r = runHook("stop-check.js", {}, { cwd, path: pathWithoutStubs() });
+      assert.equal(r.status, 0);
+      const out = JSON.parse(r.stdout);
+      assert.equal(out.decision, "block");
+      assert.match(out.reason, /TypeScript errors/);
+      assert.match(out.reason, /Test failures/);
+    },
+    { testScript: "vitest" }
+  );
 });
 
 test("malformed stdin does not crash the hook", () => {
