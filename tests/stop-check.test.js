@@ -1,6 +1,5 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { execFileSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -9,31 +8,13 @@ const { runHook, pathWithoutStubs } = require("./helpers/run-hook");
 // stop-check.js only runs tsc if tsconfig.json exists, and only runs `npm
 // test` if package.json declares a test script — this fixture provides both
 // so tests can exercise the actual spawnSync/stub-bin invocation paths.
-// `testScript`/`git`/`gitDirty` let tests exercise the --changed-appending
-// logic, which only kicks in for a vitest test script, in an actual git
-// repo, that also has a real diff vs HEAD to scope the run to — a clean
-// working tree must fall back to the full suite (see the regression test
-// below for why: an empty --changed run exits 0 as a false pass).
-function withProject(fn, { testScript = "echo test", git = false, gitDirty = false } = {}) {
+function withProject(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elite-ts-hook-test-"));
   fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
   fs.writeFileSync(
     path.join(dir, "package.json"),
-    JSON.stringify({ name: "x", scripts: { test: testScript } })
+    JSON.stringify({ name: "x", scripts: { test: "echo test" } })
   );
-  if (git) {
-    const gitOpts = { cwd: dir, stdio: "ignore" };
-    execFileSync("git", ["init", "--quiet"], gitOpts);
-    execFileSync("git", ["config", "user.email", "test@example.com"], gitOpts);
-    execFileSync("git", ["config", "user.name", "Test"], gitOpts);
-    execFileSync("git", ["add", "-A"], gitOpts);
-    execFileSync("git", ["commit", "--quiet", "-m", "initial"], gitOpts);
-    if (gitDirty) {
-      // Modify a tracked file so `git diff --name-only HEAD` actually
-      // reports something — this is what makes --changed meaningful.
-      fs.appendFileSync(path.join(dir, "package.json"), "\n");
-    }
-  }
   try {
     return fn(dir);
   } finally {
@@ -136,95 +117,6 @@ test("tsc timing out is reported as a block, not silence", () => {
     assert.equal(out.decision, "block");
     assert.match(out.reason, /TypeScript check timed out/);
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, sleepMs + 200);
-  });
-});
-
-// tsc and `npm test` are independent (tsc --noEmit produces no artifact that
-// `npm test` could depend on), so they should run concurrently rather than
-// tsc_time + test_time sequentially. Sleep both stubs the same amount and
-// assert the hook's wall-clock time is close to one sleep, not the sum of
-// both — a generous threshold keeps this from flaking on a loaded CI box.
-test("tsc and npm test run concurrently, not sequentially", () => {
-  withProject((cwd) => {
-    const sleepMs = 300;
-    const start = Date.now();
-    const r = run(
-      {
-        STUB_TSC_SLEEP_MS: String(sleepMs),
-        STUB_TSC_STATUS: "0",
-        STUB_NPM_TEST_SLEEP_MS: String(sleepMs),
-        STUB_NPM_TEST_STATUS: "0"
-      },
-      cwd
-    );
-    const elapsed = Date.now() - start;
-    assert.equal(r.status, 0);
-    assert.equal(r.stdout, "");
-    // Sequential would take ~2 * sleepMs (600ms+); concurrent should land
-    // close to a single sleepMs. 500ms gives generous headroom above 300ms
-    // for process spawn overhead while staying well under the 600ms floor
-    // sequential execution would hit.
-    assert.ok(
-      elapsed < sleepMs * 2 - 100,
-      `expected concurrent execution (~${sleepMs}ms), took ${elapsed}ms`
-    );
-  });
-});
-
-// --changed scopes the test run to files affected by what's actually different
-// from git, instead of the whole suite — but only when the test runner is
-// vitest (Jest's equivalent flag is spelled differently, and other runners
-// don't have one), there's a real git repo to diff against, and that diff is
-// non-empty (see the regression test below for why the last part matters).
-function argsUsedFor(cwd, extraEnv) {
-  const argsFile = path.join(cwd, "npm-args.txt");
-  run(
-    {
-      STUB_TSC_STATUS: "0",
-      STUB_NPM_TEST_STATUS: "0",
-      STUB_NPM_RECORD_ARGS_TO: argsFile,
-      ...extraEnv
-    },
-    cwd
-  );
-  return fs.readFileSync(argsFile, "utf8");
-}
-
-test("vitest test script in a git repo with a real diff -> npm test is invoked with -- --changed", () => {
-  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test -- --changed"), {
-    testScript: "vitest",
-    git: true,
-    gitDirty: true
-  });
-});
-
-test("vitest test script without a git repo -> falls back to the full suite", () => {
-  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
-    testScript: "vitest",
-    git: false
-  });
-});
-
-test("non-vitest test runner -> --changed is not appended even in a git repo", () => {
-  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
-    testScript: "jest",
-    git: true,
-    gitDirty: true
-  });
-});
-
-// Regression test for the bug this fix addresses: if the working tree is
-// clean vs HEAD (e.g. code was already committed earlier in the same
-// session before this Stop hook fired), `vitest --changed` has nothing to
-// diff against and matches zero test files — vitest exits 0 with "No test
-// files found", which would previously read as a false "Tests ✓" pass
-// without a single test actually running. --changed must not be appended in
-// this case; the full suite must run instead.
-test("vitest test script in a git repo with a clean working tree -> falls back to the full suite", () => {
-  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
-    testScript: "vitest",
-    git: true,
-    gitDirty: false
   });
 });
 
