@@ -3,7 +3,21 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const { runHook, pathWithoutStubs } = require("./helpers/run-hook");
+
+// Mirrors stop-check.js's own stateFile derivation (session_id, falling back
+// to `cwd:${cwd}` when absent — these tests never pass a session_id) so
+// tests can clean up the dedup state the hook writes to os.tmpdir(), which
+// lives outside the per-test project dir and wouldn't otherwise get swept up
+// by withProject's cleanup.
+function stateFileFor(cwd) {
+  const stateKey = `cwd:${cwd}`;
+  return path.join(
+    os.tmpdir(),
+    `elite-ts-stop-check-${crypto.createHash("sha256").update(stateKey).digest("hex")}.json`
+  );
+}
 
 // stop-check.js only runs tsc if tsconfig.json exists, and only runs `npm
 // test` if package.json declares a test script — this fixture provides both
@@ -93,6 +107,77 @@ test("both tsc and tests failing combines both reasons", () => {
     const out = JSON.parse(r.stdout);
     assert.match(out.reason, /TypeScript errors/);
     assert.match(out.reason, /Test failures/);
+  });
+});
+
+// Regression tests for the infinite-loop bug this hook shipped with: blocking
+// a Stop event re-invokes the hook on Claude's next response, and if the
+// same tsc/test failure recurs (e.g. a pre-existing failure unrelated to the
+// conversation), the hook would block again with the identical reason —
+// forever, since nothing about the failure ever changes.
+test("identical failure on a second consecutive Stop does not block again", () => {
+  withProject((cwd) => {
+    try {
+      const env = {
+        STUB_TSC_STATUS: "1",
+        STUB_TSC_STDOUT: "src/foo.ts(1,1): error TS2304: Cannot find name 'x'.",
+        STUB_NPM_TEST_STATUS: "0"
+      };
+      const first = run(env, cwd);
+      assert.equal(JSON.parse(first.stdout).decision, "block");
+
+      const second = run(env, cwd);
+      const secondOut = JSON.parse(second.stdout);
+      assert.equal(secondOut.decision, undefined);
+      assert.match(secondOut.hookSpecificOutput.additionalContext, /not blocking again/);
+      assert.match(secondOut.hookSpecificOutput.additionalContext, /TS2304/);
+    } finally {
+      fs.rmSync(stateFileFor(cwd), { force: true });
+    }
+  });
+});
+
+test("a different failure on the second Stop blocks again", () => {
+  withProject((cwd) => {
+    try {
+      const first = run(
+        { STUB_TSC_STATUS: "1", STUB_TSC_STDOUT: "TS error A", STUB_NPM_TEST_STATUS: "0" },
+        cwd
+      );
+      assert.equal(JSON.parse(first.stdout).decision, "block");
+
+      const second = run(
+        { STUB_TSC_STATUS: "1", STUB_TSC_STDOUT: "TS error B", STUB_NPM_TEST_STATUS: "0" },
+        cwd
+      );
+      const secondOut = JSON.parse(second.stdout);
+      assert.equal(secondOut.decision, "block");
+      assert.match(secondOut.reason, /TS error B/);
+    } finally {
+      fs.rmSync(stateFileFor(cwd), { force: true });
+    }
+  });
+});
+
+test("a passing check clears state, so a later identical failure blocks again", () => {
+  withProject((cwd) => {
+    try {
+      const failEnv = {
+        STUB_TSC_STATUS: "1",
+        STUB_TSC_STDOUT: "TS error",
+        STUB_NPM_TEST_STATUS: "0"
+      };
+      const first = run(failEnv, cwd);
+      assert.equal(JSON.parse(first.stdout).decision, "block");
+
+      const passing = run({ STUB_TSC_STATUS: "0", STUB_NPM_TEST_STATUS: "0" }, cwd);
+      assert.equal(passing.stdout, "");
+
+      const third = run(failEnv, cwd);
+      assert.equal(JSON.parse(third.stdout).decision, "block");
+    } finally {
+      fs.rmSync(stateFileFor(cwd), { force: true });
+    }
   });
 });
 
