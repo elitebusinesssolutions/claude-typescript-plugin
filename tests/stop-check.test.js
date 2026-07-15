@@ -166,7 +166,12 @@ test("tsc timing out is reported as a block, not silence", () => {
 // both — a generous threshold keeps this from flaking on a loaded CI box.
 test("tsc and npm test run concurrently, not sequentially", () => {
   withProject((cwd) => {
-    const sleepMs = 300;
+    // A larger sleepMs gives proportionally more headroom above fixed
+    // process-spawn overhead than a smaller one would — a loaded Windows CI
+    // runner previously tripped a 300ms-sleep/500ms-threshold version of this
+    // assertion (took 544ms) purely from spawn overhead, not from actually
+    // running sequentially.
+    const sleepMs = 500;
     const start = Date.now();
     const r = run(
       {
@@ -180,9 +185,9 @@ test("tsc and npm test run concurrently, not sequentially", () => {
     const elapsed = Date.now() - start;
     assert.equal(r.status, 0);
     assert.equal(r.stdout, "");
-    // Sequential would take ~2 * sleepMs (600ms+); concurrent should land
-    // close to a single sleepMs. 500ms gives generous headroom above 300ms
-    // for process spawn overhead while staying well under the 600ms floor
+    // Sequential would take ~2 * sleepMs (1000ms+); concurrent should land
+    // close to a single sleepMs. 900ms gives generous headroom above 500ms
+    // for process spawn overhead while staying well under the 1000ms floor
     // sequential execution would hit.
     assert.ok(
       elapsed < sleepMs * 2 - 100,
@@ -269,6 +274,17 @@ test("vitest test script with only an untracked new file -> --changed is still a
 test("chained vitest script -> --changed is not appended even with a real diff", () => {
   withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
     testScript: "vitest run && npm run lint",
+    git: true,
+    gitDirty: true
+  });
+});
+
+// Regression test: a single `&` (background/sequence execution, valid in
+// both POSIX shells and cmd.exe) is the same class of bug as `&&` above —
+// CHAINED_SCRIPT_RE must catch it too, not just the two-character operators.
+test("vitest script chained with a single & -> --changed is not appended", () => {
+  withProject((cwd) => assert.equal(argsUsedFor(cwd), "test"), {
+    testScript: "vitest & npm run lint",
     git: true,
     gitDirty: true
   });

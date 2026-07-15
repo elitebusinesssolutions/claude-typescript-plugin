@@ -9,7 +9,7 @@ const path = require("node:path");
 // the real system npx/npm — making every hook test that depends on the stub
 // exercise real tsc/eslint/prettier instead.
 const STUB_BIN = path.join(__dirname, "helpers", "stub-bin");
-const EXECUTABLE_SCRIPTS = ["npx", "npm"];
+const EXECUTABLE_SCRIPTS = ["npx", "npm", "yarn", "pnpm"];
 
 test(
   "stub-bin POSIX wrapper scripts are executable",

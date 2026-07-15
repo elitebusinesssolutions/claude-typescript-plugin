@@ -57,6 +57,13 @@ function killTree(child) {
 // Node's own kill(), and in that case the close event's `signal` isn't
 // reliably populated — only Node-initiated kills get to encode a signal name
 // into the exit it reports.
+//
+// A ChildProcess's 'error' event (e.g. the resolved package manager binary
+// isn't actually installed despite its lockfile being present, or the shell
+// itself can't be spawned) has no default handler — Node treats an
+// unhandled 'error' event as an uncaught exception and crashes the whole
+// process. Resolving from it here, like any other non-zero outcome, keeps a
+// spawn failure inside the normal failed/timed-out reporting path instead.
 function runChild(command, args, opts, timeoutMs = HOOK_TIMEOUT_MS) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -69,6 +76,7 @@ function runChild(command, args, opts, timeoutMs = HOOK_TIMEOUT_MS) {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let settled = false;
 
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
@@ -84,7 +92,22 @@ function runChild(command, args, opts, timeoutMs = HOOK_TIMEOUT_MS) {
       killTree(child);
     }, timeoutMs);
 
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        status: null,
+        signal: null,
+        stdout,
+        stderr: `${stderr}${err.message}`,
+        timedOut: false
+      });
+    });
+
     child.on("close", (status, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve({ status, signal, stdout, stderr, timedOut });
     });
@@ -94,7 +117,7 @@ function runChild(command, args, opts, timeoutMs = HOOK_TIMEOUT_MS) {
 // Only treat a test script as "vitest" for the purposes of the --changed
 // fast-path below if vitest is unambiguously the sole command being run:
 // anchored to the start of the script (after stripping leading env-var
-// assignments / `cross-env` / `npx`), and not part of a `&&`/`||`/`;`/`|`
+// assignments / `cross-env` / `npx`), and not part of a `&&`/`||`/`;`/`|`/`&`
 // chain. A plain substring test doesn't work: "turbo run test" doesn't
 // contain "vitest" at all even though vitest may run underneath it (silently
 // disables the optimization — acceptable, since there's nothing here to
@@ -104,10 +127,14 @@ function runChild(command, args, opts, timeoutMs = HOOK_TIMEOUT_MS) {
 // script). Chained scripts are excluded entirely rather than guessed at:
 // npm's `-- extra args` forwarding appends to the end of the WHOLE script
 // string, so `"vitest run && npm run lint"` would have --changed land on
-// `lint`, not vitest.
+// `lint`, not vitest — and the same is true of a single `&` (background/
+// sequence execution, valid in both POSIX shells and cmd.exe), not just the
+// `&&`/`||` two-character operators. Matching on the bare `&`/`;`/`|`
+// characters catches all of these at once, since every one of `&&`, `||`,
+// `;`, `|`, and `&` contains at least one of them.
 const VITEST_SOLE_COMMAND_RE =
   /^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(?:cross-env\s+(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(?:npx\s+)?vitest\b/;
-const CHAINED_SCRIPT_RE = /&&|\|\||;|\|/;
+const CHAINED_SCRIPT_RE = /[&;|]/;
 
 function usesVitestAsSoleCommand(testScript) {
   return !CHAINED_SCRIPT_RE.test(testScript) && VITEST_SOLE_COMMAND_RE.test(testScript.trim());
