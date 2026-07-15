@@ -27,6 +27,8 @@ jobs:
 
       - run: |
           irm https://claude.ai/install.ps1 | iex
+          $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+          [Environment]::SetEnvironmentVariable('PATH', "$currentPath;$env:USERPROFILE\.local\bin", 'User')
           claude plugin validate .
           mkdir plugin-test-project && cd plugin-test-project
           claude plugin marketplace add ../
