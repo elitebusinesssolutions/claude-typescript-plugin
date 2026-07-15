@@ -28,10 +28,17 @@ function writeStubBin(binPath, stubJsPath) {
 }
 
 // format.js only invokes eslint/prettier if node_modules/.bin/<tool> exists in
-// cwd — this fixture simulates either or both being a project devDependency.
+// cwd (or a parent of cwd — see the monorepo fixture below) — this fixture
+// simulates either or both being a project devDependency. When `nested` is
+// set, node_modules/.bin lives at the fixture root but `fn` is invoked with a
+// sub-package directory (no node_modules of its own) as cwd, simulating an
+// npm/yarn/pnpm workspace where eslint/prettier are hoisted to the root.
 // `brokenPrettier` simulates a resolved-but-non-executable bin (e.g. a
 // corrupt install) instead of a working stub.
-function withProject({ eslint = false, prettier = false, brokenPrettier = false } = {}, fn) {
+function withProject(
+  { eslint = false, prettier = false, brokenPrettier = false, nested = false } = {},
+  fn
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elite-ts-hook-test-"));
   const binDir = path.join(dir, "node_modules", ".bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -39,8 +46,13 @@ function withProject({ eslint = false, prettier = false, brokenPrettier = false 
   if (eslint) writeStubBin(binPath("eslint"), STUB_ESLINT_JS);
   if (prettier) writeStubBin(binPath("prettier"), STUB_PRETTIER_JS);
   if (brokenPrettier) fs.writeFileSync(binPath("prettier"), ""); // exists but not executable
+  let cwd = dir;
+  if (nested) {
+    cwd = path.join(dir, "packages", "sub");
+    fs.mkdirSync(cwd, { recursive: true });
+  }
   try {
-    return fn(dir);
+    return fn(cwd);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -239,4 +251,57 @@ test("malformed JSON on stdin does not crash the hook", () => {
   assert.notEqual(r.status, 2);
   assert.equal(r.stdout, "");
   assert.match(r.stderr, /format\.js: skipping/);
+});
+
+// Regression test for issue #5: in an npm/yarn/pnpm workspace, eslint/prettier
+// are typically hoisted to the workspace root's node_modules/.bin only. If the
+// hook's cwd is a sub-package directory with no node_modules of its own, the
+// bin-existence gate must still find them by walking up to the workspace root
+// — otherwise linting/formatting is silently skipped for the whole sub-package.
+test("monorepo: eslint hoisted to workspace root is still found from a nested sub-package cwd", () => {
+  withProject({ eslint: true, prettier: true, nested: true }, (cwd) => {
+    const r = run(
+      { tool_name: "Write", tool_input: { file_path: "src/foo.ts" } },
+      {
+        STUB_ESLINT_STATUS: "2",
+        STUB_ESLINT_STDERR: "ESLint couldn't find a configuration file",
+        STUB_PRETTIER_STATUS: "0"
+      },
+      cwd
+    );
+    // If the gate failed to find the hoisted bin, eslint would never have been
+    // invoked at all, so there'd be no output here — the presence of this
+    // message proves the hoisted binary was detected and npx eslint ran.
+    const out = JSON.parse(r.stdout);
+    assert.match(out.hookSpecificOutput.additionalContext, /ESLint did not run on foo\.ts/);
+  });
+});
+
+test("monorepo: prettier hoisted to workspace root is still found from a nested sub-package cwd", () => {
+  withProject({ eslint: true, prettier: true, nested: true }, (cwd) => {
+    const r = run(
+      { tool_name: "Write", tool_input: { file_path: "src/foo.ts" } },
+      {
+        STUB_ESLINT_STATUS: "0",
+        STUB_PRETTIER_STATUS: "1",
+        STUB_PRETTIER_STDERR: "[error] src/foo.ts: SyntaxError"
+      },
+      cwd
+    );
+    const out = JSON.parse(r.stdout);
+    assert.match(out.hookSpecificOutput.additionalContext, /Prettier error on foo\.ts/);
+  });
+});
+
+// Don't regress the simple (non-monorepo) case: a cwd with its own
+// node_modules/.bin/eslint must keep working exactly as before.
+test("monorepo fix does not regress a project with its own local node_modules", () => {
+  withEslintProject((cwd) => {
+    const r = run(
+      { tool_name: "Write", tool_input: { file_path: "src/foo.ts" } },
+      { STUB_ESLINT_STATUS: "0", STUB_PRETTIER_STATUS: "0" },
+      cwd
+    );
+    assert.equal(r.stdout, "");
+  });
 });

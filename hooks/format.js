@@ -12,6 +12,23 @@ try {
   const cwd = process.cwd();
   const messages = [];
 
+  // In an npm/yarn/pnpm workspace, ESLint/Prettier are typically hoisted to the
+  // workspace root's node_modules/.bin only — a sub-package's own node_modules
+  // won't have them. Walk up from cwd (mirroring Node's own module resolution
+  // and how npx locates binaries) so the gates below don't misdetect "not
+  // installed" just because cwd is a sub-package directory.
+  function findBin(name) {
+    const binName = process.platform === "win32" ? `${name}.cmd` : name;
+    let dir = cwd;
+    for (;;) {
+      const candidate = path.join(dir, "node_modules", ".bin", binName);
+      if (fs.existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) return null; // reached filesystem root
+      dir = parent;
+    }
+  }
+
   // ESLint only understands JS/TS source files — running it on README.md,
   // package.json, etc. produces noisy "fatal" errors for unsupported file types.
   //
@@ -21,13 +38,8 @@ try {
   // code ESLint itself uses for "ran fine, found lint issues" — so a project
   // that simply doesn't use ESLint would get misreported as having lint errors
   // (or, before this fix, have that failure silently swallowed).
-  const eslintBin = path.join(
-    cwd,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "eslint.cmd" : "eslint"
-  );
-  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && fs.existsSync(eslintBin)) {
+  const eslintBin = findBin("eslint");
+  if (/\.(ts|tsx|mts|cts|js|jsx|cjs|mjs)$/.test(f) && eslintBin) {
     // Spawn the already-resolved binary directly rather than `npx eslint` — npx
     // re-resolves the package on every invocation, which is a wasted extra
     // process layer on a hook that fires on nearly every Write/Edit tool call.
@@ -53,13 +65,8 @@ try {
   // prettier devDependency triggers `npx prettier`'s package-resolution/install
   // behavior on every single Write/Edit, and any resulting non-zero exit gets
   // misreported below as a formatting failure rather than "prettier isn't set up".
-  const prettierBin = path.join(
-    cwd,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "prettier.cmd" : "prettier"
-  );
-  if (fs.existsSync(prettierBin)) {
+  const prettierBin = findBin("prettier");
+  if (prettierBin) {
     // Same rationale as the ESLint spawn above: use the already-resolved bin
     // path directly instead of routing through `npx prettier`.
     const prettier = spawnSync(prettierBin, ["--write", "--ignore-unknown", f], {
