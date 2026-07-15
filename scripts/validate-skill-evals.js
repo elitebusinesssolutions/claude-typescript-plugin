@@ -12,7 +12,8 @@ function changedSkillNames(baseRef) {
   try {
     diff = execFileSync("git", ["diff", "--name-only", `${baseRef}...HEAD`], {
       cwd: REPO_ROOT,
-      encoding: "utf8"
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (err) {
     throw new Error(
