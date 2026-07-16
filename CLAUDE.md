@@ -1,6 +1,6 @@
 # claude-typescript-plugin — Development Guide
 
-This is the elite-ts Claude Code plugin. It ships a shared formatting-setup skill and lint/format/type-check hooks for any TypeScript or JavaScript project — no Next.js or .NET assumptions. Install it via:
+This is the elite-ts Claude Code plugin. It ships a shared formatting-setup skill and lint/format hooks for any TypeScript or JavaScript project — no Next.js or .NET assumptions. Install it via:
 
 ```bash
 claude plugin marketplace add elitebusinesssolutions/claude-typescript-plugin
@@ -31,13 +31,12 @@ claude-typescript-plugin/
 │       └── SKILL.md         # Prettier/ESLint/EditorConfig/VS Code setup skill
 ├── hooks/
 │   ├── hooks.json           # Hook configuration (event → handler mapping)
-│   ├── format.js            # PostToolUse: ESLint + Prettier
-│   └── stop-check.js        # Stop: tsc + npm test
+│   └── format.js            # PostToolUse: ESLint + Prettier
 ├── tests/                   # node:test suite for the hook scripts
 └── README.md
 ```
 
-`.claude/settings.json` wires this repo's own `hooks/*.js` scripts up via `${CLAUDE_PROJECT_DIR}` so working on this plugin exercises the same hooks a consumer project gets — most usefully, `stop-check.js` runs `npm test` (the hook test suite) at the end of every session in this repo. It intentionally duplicates the two hook entries from `hooks/hooks.json` (which uses `${CLAUDE_PLUGIN_ROOT}`, only resolved when the plugin is actually installed) rather than self-installing via a local marketplace path — marketplace-installed plugins are copied into `~/.claude/plugins/cache`, so hook script edits wouldn't take effect without a reinstall. Keep both files in sync when adding or changing a hook.
+`.claude/settings.json` wires this repo's own `hooks/*.js` scripts up via `${CLAUDE_PROJECT_DIR}` so working on this plugin exercises the same hooks a consumer project gets. It intentionally duplicates the hook entry from `hooks/hooks.json` (which uses `${CLAUDE_PLUGIN_ROOT}`, only resolved when the plugin is actually installed) rather than self-installing via a local marketplace path — marketplace-installed plugins are copied into `~/.claude/plugins/cache`, so hook script edits wouldn't take effect without a reinstall. Keep both files in sync when adding or changing a hook.
 
 **Rules enforced by the official spec:**
 
@@ -54,7 +53,7 @@ Reference: [Plugin manifest schema](https://code.claude.com/docs/en/plugins-refe
 ```json
 {
   "name": "elite-ts",
-  "description": "Shared lint/format/type-check hooks and a formatting-setup skill for TypeScript projects",
+  "description": "Shared lint/format hooks and a formatting-setup skill for TypeScript projects",
   "version": "0.1.0",
   "repository": "https://github.com/elitebusinesssolutions/claude-typescript-plugin",
   "skills": "./skills/"
@@ -251,7 +250,7 @@ Default timeout for command hooks is 600 seconds. Set shorter timeouts for hooks
 { "timeout": 120 }
 ```
 
-Respectively: `format.js` (ESLint + Prettier on a single file), `stop-check.js` (tsc + npm test across the whole project). `Stop` hooks with long timeouts are fine — they run after Claude finishes, not during tool calls.
+`format.js` uses the shorter timeout since it only lints/formats a single file. `Stop` hooks can use long timeouts — they run after Claude finishes, not during tool calls.
 
 ### Hook script guidelines
 
@@ -262,7 +261,7 @@ Respectively: `format.js` (ESLint + Prettier on a single file), `stop-check.js` 
 5. **Don't spawn heavy processes in PreToolUse.** Linting belongs in PostToolUse.
 6. **Write to stderr for user-visible messages, stdout for JSON control output.** Mixing them breaks JSON parsing.
 7. **No `console.log` in hook scripts.** Use `process.stderr.write()` for diagnostics and `process.stdout.write(JSON.stringify(...))` for structured output.
-8. **Guard against project shapes that don't apply.** `format.js` only runs ESLint if `node_modules/.bin/eslint` exists; `stop-check.js` only runs `tsc` if `tsconfig.json` exists and only runs `npm test` if `package.json` declares a `test` script. Without these guards, a plain-JS project or a project with no tests yet gets a spurious failure on every session.
+8. **Guard against project shapes that don't apply.** `format.js` only runs ESLint if `node_modules/.bin/eslint` exists (and only runs Prettier if `node_modules/.bin/prettier` exists). Without these guards, a plain-JS project without one of the tools installed gets a spurious failure on every save.
 
 ### Hook events reference
 
@@ -310,7 +309,7 @@ echo '{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_p
 
 ### Automated hook tests
 
-`tests/*.test.js` covers both hook scripts using Node's built-in test runner (no dependencies). They spawn each hook as a real child process with controlled stdin and a stubbed `npx`/`npm` on `PATH` (`tests/helpers/`), so they exercise actual exit-code/stdout behavior — including the failure modes that tend to go unnoticed when this plugin runs inside someone else's project (malformed stdin, ESLint/Prettier/tsc missing or misbehaving, timeouts).
+`tests/*.test.js` covers the hook scripts using Node's built-in test runner (no dependencies). They spawn each hook as a real child process with controlled stdin (`tests/helpers/`), so they exercise actual exit-code/stdout behavior — including the failure modes that tend to go unnoticed when this plugin runs inside someone else's project (malformed stdin, ESLint/Prettier missing or misbehaving, timeouts).
 
 ```bash
 npm test
@@ -433,7 +432,7 @@ Examples:
 
 ```text
 feat(hooks): add stylelint support to format.js
-fix(hooks): guard stop-check.js against missing package.json
+fix(hooks): guard format.js against missing package.json
 chore(skills): tighten setup-formatting eslint config examples
 ```
 
@@ -442,7 +441,7 @@ Breaking changes — add `!` and a footer:
 ```text
 feat(hooks)!: rename ELITE_TS_HOOK_TIMEOUT_MS env var
 
-BREAKING CHANGE: consumer projects overriding the stop-check timeout must rename their env var.
+BREAKING CHANGE: consumer projects overriding a hook's timeout via env var must rename it.
 ```
 
 ### PR rules

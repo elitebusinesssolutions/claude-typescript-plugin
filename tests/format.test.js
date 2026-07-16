@@ -5,16 +5,14 @@ const os = require("os");
 const path = require("path");
 const { runHook } = require("./helpers/run-hook");
 
-// format.js now spawns the resolved eslint/prettier bin path directly instead
-// of going through `npx <tool>` (see hooks/format.js) — so, unlike the
-// PATH-level npx/npm stubs in tests/helpers/stub-bin, these fixture bin files
-// must themselves BE the executable eslint/prettier binaries format.js
-// resolves to and runs. Each is a tiny shim (a POSIX shell script, or a
-// Windows batch file) that execs a dedicated per-tool stub script controlled
-// by STUB_ESLINT_*/STUB_PRETTIER_* env vars — one stub script per tool,
-// rather than the shared argv[2]-dispatching tests/helpers/stub-bin/stub-npx.js,
-// because a direct-bin spawn's argv is just the tool's own args (e.g.
-// ["--fix", "src/foo.ts"]), not a tool name to switch on.
+// format.js spawns the resolved eslint/prettier bin path directly (see
+// hooks/format.js), so these fixture bin files must themselves BE the
+// executable eslint/prettier binaries format.js resolves to and runs. Each
+// is a tiny shim (a POSIX shell script, or a Windows batch file) that execs a
+// dedicated per-tool stub script controlled by STUB_ESLINT_*/STUB_PRETTIER_*
+// env vars — one stub script per tool, because a direct-bin spawn's argv is
+// just the tool's own args (e.g. ["--fix", "src/foo.ts"]), not a tool name to
+// switch on.
 const STUB_ESLINT_JS = path.join(__dirname, "helpers", "stub-bin", "stub-eslint.js");
 const STUB_PRETTIER_JS = path.join(__dirname, "helpers", "stub-bin", "stub-prettier.js");
 

@@ -1,6 +1,5 @@
-// Shared helper for both hook scripts (format.js, stop-check.js): turns a
-// spawned process's stdout/stderr into a single truncated string suitable
-// for a failure message.
+// Shared helper for format.js: turns a spawned process's stdout/stderr into
+// a single truncated string suitable for a failure message.
 //
 // stdout and stderr are joined with an explicit "\n" separator before being
 // trimmed/split — without that separator, a stdout chunk that doesn't already
