@@ -1,6 +1,6 @@
 # claude-typescript-plugin — Development Guide
 
-This is the elite-ts Claude Code plugin. It ships a shared formatting-setup skill and lint/format hooks for any TypeScript or JavaScript project — no Next.js or .NET assumptions. Install it via:
+This is the elite-ts Claude Code plugin. It ships shared formatting-setup/verification skills and lint/format hooks for any TypeScript or JavaScript project — no Next.js or .NET assumptions. Install it via:
 
 ```bash
 claude plugin marketplace add elitebusinesssolutions/claude-typescript-plugin

@@ -1,6 +1,6 @@
 # claude-typescript-plugin
 
-Shared Claude Code lint/format hooks and a formatting-setup skill for TypeScript/JavaScript projects. Framework-agnostic — no Next.js or .NET assumptions.
+Shared Claude Code lint/format hooks and formatting-setup/verification skills for TypeScript/JavaScript projects. Framework-agnostic — no Next.js or .NET assumptions.
 
 ## Install
 
@@ -75,6 +75,7 @@ then invoke it as `/elite-ts:<skill-name>` and run `/reload-plugins` after edits
 | Skill              | Invoke                       | Purpose                                                                    |
 | ------------------ | ---------------------------- | -------------------------------------------------------------------------- |
 | `setup-formatting` | `/elite-ts:setup-formatting` | Set up Prettier, ESLint auto-fix, EditorConfig, and VS Code format-on-save |
+| `verify`           | `/elite-ts:verify`           | Type-check, lint, format-check, and run tests before declaring work done   |
 
 ## Hooks
 
