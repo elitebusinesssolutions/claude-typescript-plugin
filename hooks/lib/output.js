@@ -8,12 +8,10 @@
 // before joining so a missing stdout or stderr doesn't leave a stray blank
 // line at the start/end/middle of the result.
 //
-// `head`/`tail` mirror Array.prototype.slice(0, n) / slice(-n) — pass
-// whichever matches how the caller wants to truncate (head for output where
-// the earliest lines matter most, e.g. tsc; tail for output where the most
-// recent lines matter most, e.g. a test runner's final summary). Passing
-// neither returns the full (trimmed, joined) output.
-function truncatedOutput(stdout, stderr, { head, tail } = {}) {
+// `head` mirrors Array.prototype.slice(0, n) — pass it to keep only the
+// earliest lines, where the root cause of a failure usually shows up first
+// (e.g. tsc/eslint errors). Omitting it returns the full (trimmed, joined) output.
+function truncatedOutput(stdout, stderr, { head } = {}) {
   const combined = [stdout, stderr]
     // Strip any trailing newline(s) each stream already ends with, so joining
     // always inserts exactly one separator — never zero (the merge bug) and
@@ -24,7 +22,7 @@ function truncatedOutput(stdout, stderr, { head, tail } = {}) {
     .trim();
 
   const lines = combined.split(/\r?\n/);
-  const sliced = head != null ? lines.slice(0, head) : tail != null ? lines.slice(-tail) : lines;
+  const sliced = head != null ? lines.slice(0, head) : lines;
 
   return sliced.join("\n");
 }

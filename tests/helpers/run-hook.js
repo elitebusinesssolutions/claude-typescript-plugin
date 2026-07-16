@@ -16,7 +16,7 @@ function runHook(hookFile, input, opts = {}) {
     cwd: opts.cwd || os.tmpdir(),
     env: { ...process.env, ...opts.env },
     encoding: "utf8",
-    timeout: opts.timeout ?? 10000
+    timeout: 10000
   });
 }
 

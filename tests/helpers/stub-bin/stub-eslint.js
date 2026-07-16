@@ -4,23 +4,4 @@
 // tool name to dispatch on) — its own argv is just eslint's own args (e.g.
 // ["--fix", "src/foo.ts"]). Controlled entirely via STUB_ESLINT_* env vars —
 // see tests/helpers/run-hook.js and tests/format.test.js.
-function envInt(name, def) {
-  return process.env[name] !== undefined ? parseInt(process.env[name], 10) : def;
-}
-
-const status = envInt("STUB_ESLINT_STATUS", 0);
-const stdout = process.env.STUB_ESLINT_STDOUT || "";
-const stderr = process.env.STUB_ESLINT_STDERR || "";
-const sleepMs = envInt("STUB_ESLINT_SLEEP_MS", 0);
-
-function finish() {
-  if (stdout) process.stdout.write(stdout);
-  if (stderr) process.stderr.write(stderr);
-  process.exit(status);
-}
-
-if (sleepMs > 0) {
-  setTimeout(finish, sleepMs);
-} else {
-  finish();
-}
+require("./stub-tool-runner").runStub("ESLINT");
