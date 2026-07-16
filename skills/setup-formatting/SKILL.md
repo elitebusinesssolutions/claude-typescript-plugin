@@ -111,7 +111,7 @@ If this is a project using the elite-ts plugin, PostToolUse formatting is alread
 For a project repo without this plugin, copy the hook script and its shared helper and wire it up. First, create `.claude/hooks/lib/output.js` with this content:
 
 ```js
-// Shared helper for both hook scripts (format.js, stop-check.js): turns a
+// Shared helper for hook scripts (format.js): turns a
 // spawned process's stdout/stderr into a single truncated string suitable
 // for a failure message.
 //
