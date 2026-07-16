@@ -13,19 +13,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/hooks/stop-check.js"],
-            "timeout": 120,
-            "statusMessage": "Running type-check and tests..."
-          }
-        ]
-      }
     ]
   },
   "enabledPlugins": {

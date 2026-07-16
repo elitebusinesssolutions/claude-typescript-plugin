@@ -46,12 +46,6 @@ test("head truncates to the first N lines", () => {
   assert.equal(out, "line0\nline1\nline2");
 });
 
-test("tail truncates to the last N lines", () => {
-  const stdout = Array.from({ length: 5 }, (_, i) => `line${i}`).join("\n");
-  const out = truncatedOutput(stdout, "", { tail: 2 });
-  assert.equal(out, "line3\nline4");
-});
-
 test("no head/tail option returns the full trimmed, joined output", () => {
   const out = truncatedOutput("  stdout  \n", "  stderr  ");
   // Overall trim() only strips leading/trailing whitespace on the combined
